@@ -124,7 +124,11 @@ func serveNotFound(w http.ResponseWriter, dir string) {
 		w.Write(data)
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusNotFound)
-	io.WriteString(w, "404 page not found\n")
+	io.WriteString(w, `<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>404</title><style>body{font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;background:#0b0b0d;color:#9a9aa3}
+.box{text-align:center;padding:2rem}h1{font-size:3rem;color:#e8e8ec;margin:0}</style></head>
+<body><div class="box"><h1>404</h1><p>页面不存在。</p></div></body></html>`)
 }

@@ -148,8 +148,8 @@ func serveUnknownHost(rw http.ResponseWriter) {
 
 const unknownHostHTML = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>404 · PageHut</title><style>body{font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;background:#f3f4f6;color:#374151}
-.box{text-align:center;padding:2rem}h1{font-size:1.5rem;color:#111827}code{background:#e5e7eb;padding:.1rem .35rem;border-radius:4px;font-size:.9em}</style></head>
+<title>404 · PageHut</title><style>body{font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;background:#0b0b0d;color:#9a9aa3}
+.box{text-align:center;padding:2rem}h1{font-size:1.5rem;color:#e8e8ec}code{background:#e5e7eb;padding:.1rem .35rem;border-radius:4px;font-size:.9em}</style></head>
 <body><div class="box"><h1>404</h1><p>该域名尚未托管任何站点，或站点不存在。</p><p><small>Powered by PageHut</small></p></div></body></html>`
 
 func servePlaceholder(rw http.ResponseWriter, status string) {
@@ -164,8 +164,8 @@ func servePlaceholder(rw http.ResponseWriter, status string) {
 	rw.WriteHeader(http.StatusForbidden)
 	tmpl, _ := template.New("p").Parse(`<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PageHut</title><style>body{font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;background:#f3f4f6;color:#374151}
-.box{text-align:center;padding:2rem}h1{font-size:1.3rem;color:#111827}</style></head>
+<title>PageHut</title><style>body{font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;background:#0b0b0d;color:#9a9aa3}
+.box{text-align:center;padding:2rem}h1{font-size:1.3rem;color:#e8e8ec}</style></head>
 <body><div class="box"><h1>{{.}}</h1><p><small>Powered by PageHut</small></p></div></body></html>`)
 	tmpl.Execute(rw, msg)
 }
@@ -199,9 +199,9 @@ func (w *Web) serveDomainVerify(rw http.ResponseWriter, r *http.Request, d *stor
 	tmpl, err := template.New("v").Parse(`<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>域名验证 · PageHut</title><style>
-body{font-family:system-ui,-apple-system,sans-serif;background:#f3f4f6;color:#374151;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center}
-.box{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:2rem;max-width:560px;line-height:1.7}
-h1{font-size:1.2rem;color:#111827}code{background:#eef2ff;padding:.1rem .35rem;border-radius:4px;font-size:.92em;word-break:break-all}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0b0b0d;color:#9a9aa3;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center}
+.box{background:#161618;border:1px solid #26262b;border-radius:12px;padding:2rem;max-width:560px;line-height:1.7}
+h1{font-size:1.2rem;color:#e8e8ec}code{background:#1b1b1f;border:1px solid #26262b;padding:.1rem .35rem;border-radius:6px;font-size:.92em;color:#c9c9d1;word-break:break-all}
 ol{padding-left:1.2rem}li{margin:.4rem 0}</style></head>
 <body><div class="box">
 <h1>PageHut · 自定义域名验证</h1>
