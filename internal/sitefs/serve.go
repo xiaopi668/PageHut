@@ -128,7 +128,7 @@ func serveNotFound(w http.ResponseWriter, dir string) {
 	w.WriteHeader(http.StatusNotFound)
 	io.WriteString(w, `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>404</title><style>body{font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;background:#0b0b0d;color:#9a9aa3}
-.box{text-align:center;padding:2rem}h1{font-size:3rem;color:#e8e8ec;margin:0}</style></head>
+<title>404</title><style>body{font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;background:radial-gradient(46rem 32rem at 12% -8%,rgba(34,211,238,.14),transparent 62%),radial-gradient(50rem 36rem at 90% -4%,rgba(139,92,246,.12),transparent 62%),#07070a;color:#a7a7b3}
+.box{text-align:center;padding:2rem;background:rgba(255,255,255,.055);backdrop-filter:blur(20px) saturate(150%);-webkit-backdrop-filter:blur(20px) saturate(150%);border:1px solid rgba(255,255,255,.11);border-radius:22px;padding:2.4rem 3rem}h1{font-size:3rem;color:#f2f2f6;margin:0}</style></head>
 <body><div class="box"><h1>404</h1><p>页面不存在。</p></div></body></html>`)
 }

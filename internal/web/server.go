@@ -148,8 +148,8 @@ func serveUnknownHost(rw http.ResponseWriter) {
 
 const unknownHostHTML = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>404 · PageHut</title><style>body{font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;background:#0b0b0d;color:#9a9aa3}
-.box{text-align:center;padding:2rem}h1{font-size:1.5rem;color:#e8e8ec}code{background:#e5e7eb;padding:.1rem .35rem;border-radius:4px;font-size:.9em}</style></head>
+<title>404 · PageHut</title><style>body{font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;background:radial-gradient(46rem 32rem at 12% -8%,rgba(34,211,238,.14),transparent 62%),radial-gradient(50rem 36rem at 90% -4%,rgba(139,92,246,.12),transparent 62%),#07070a;color:#a7a7b3}
+.box{text-align:center;padding:2rem}h1{font-size:1.5rem;color:#f2f2f6}code{background:#e5e7eb;padding:.1rem .35rem;border-radius:4px;font-size:.9em}</style></head>
 <body><div class="box"><h1>404</h1><p>该域名尚未托管任何站点，或站点不存在。</p><p><small>Powered by PageHut</small></p></div></body></html>`
 
 func servePlaceholder(rw http.ResponseWriter, status string) {
@@ -164,7 +164,7 @@ func servePlaceholder(rw http.ResponseWriter, status string) {
 	rw.WriteHeader(http.StatusForbidden)
 	tmpl, _ := template.New("p").Parse(`<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PageHut</title><style>body{font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;background:#0b0b0d;color:#9a9aa3}
+<title>PageHut</title><style>body{font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;background:radial-gradient(46rem 32rem at 12% -8%,rgba(34,211,238,.14),transparent 62%),radial-gradient(50rem 36rem at 90% -4%,rgba(139,92,246,.12),transparent 62%),#07070a;color:#a7a7b3}
 .box{text-align:center;padding:2rem}h1{font-size:1.3rem;color:#e8e8ec}</style></head>
 <body><div class="box"><h1>{{.}}</h1><p><small>Powered by PageHut</small></p></div></body></html>`)
 	tmpl.Execute(rw, msg)
@@ -199,8 +199,8 @@ func (w *Web) serveDomainVerify(rw http.ResponseWriter, r *http.Request, d *stor
 	tmpl, err := template.New("v").Parse(`<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>域名验证 · PageHut</title><style>
-body{font-family:system-ui,-apple-system,sans-serif;background:#0b0b0d;color:#9a9aa3;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center}
-.box{background:#161618;border:1px solid #26262b;border-radius:12px;padding:2rem;max-width:560px;line-height:1.7}
+body{font-family:system-ui,-apple-system,sans-serif;background:radial-gradient(46rem 32rem at 12% -8%,rgba(34,211,238,.14),transparent 62%),radial-gradient(50rem 36rem at 90% -4%,rgba(139,92,246,.12),transparent 62%),#07070a;color:#a7a7b3;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center}
+.box{background:rgba(255,255,255,.055);backdrop-filter:blur(20px) saturate(150%);border:1px solid rgba(255,255,255,.11);border-radius:12px;padding:2rem;max-width:560px;line-height:1.7}
 h1{font-size:1.2rem;color:#e8e8ec}code{background:#1b1b1f;border:1px solid #26262b;padding:.1rem .35rem;border-radius:6px;font-size:.92em;color:#c9c9d1;word-break:break-all}
 ol{padding-left:1.2rem}li{margin:.4rem 0}</style></head>
 <body><div class="box">
