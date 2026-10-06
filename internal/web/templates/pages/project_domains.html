@@ -1,0 +1,57 @@
+{{define "content"}}
+<div class="page-head">
+  <h2>自定义域名 · {{.Data.Project.Name}}</h2>
+  <a class="btn" href="/projects/{{.Data.Project.ID}}">返回概览</a>
+</div>
+
+{{if .Data.CanManage}}
+<div class="card">
+  <h3>绑定新域名</h3>
+  <p class="help">绑定流程：① 提交域名 → ② 按提示添加 DNS 解析 → ③ 点击「立即检查」完成所有权验证 → ④ 等待管理员开通。</p>
+  <form method="post" action="/projects/{{.Data.Project.ID}}/domains" class="inline-form">
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <label>域名<input name="domain" placeholder="www.example.com" required></label>
+    <button class="btn primary" type="submit">提交申请</button>
+  </form>
+</div>
+{{end}}
+
+{{if .Data.Domains}}
+<table class="list">
+  <tr><th>域名</th><th>状态</th><th>验证链接</th><th>申请时间</th>{{if .Data.CanManage}}<th style="width:240px">操作</th>{{end}}</tr>
+  {{range .Data.Domains}}
+  <tr>
+    <td class="mono">{{.Domain}}</td>
+    <td><span class="badge {{domainStatusClass .Status}}">{{domainStatusName .Status}}</span></td>
+    <td class="small">{{if eq .Status "pending"}}<code>http://{{.Domain}}/.well-known/pagehut-verify/{{.VerifyToken}}</code>{{else}}<span class="muted">—</span>{{end}}</td>
+    <td class="muted">{{timefmt .CreatedAt}}</td>
+    {{if $.Data.CanManage}}
+    <td class="actions">
+      {{if eq .Status "pending"}}
+      <form method="post" action="/projects/{{$.Data.Project.ID}}/domains/{{.ID}}/check" class="inline">
+        <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+        <button class="btn small" type="submit">立即检查</button>
+      </form>
+      {{end}}
+      <form method="post" action="/projects/{{$.Data.Project.ID}}/domains/{{.ID}}/delete" class="inline" onsubmit="return confirm('删除域名 {{.Domain}} 的绑定申请？')">
+        <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+        <button class="btn small danger" type="submit">删除</button>
+      </form>
+    </td>
+    {{end}}
+  </tr>
+  {{end}}
+</table>
+
+<div class="card" style="margin-top:1.2rem">
+  <h3>验证方法</h3>
+  <ol class="small">
+    <li><b>CNAME 方式（推荐）：</b>为你的域名添加 CNAME 记录指向 <code>{{.Data.Target}}</code></li>
+    <li><b>A 记录方式：</b>将域名 A 记录指向本服务器 IP</li>
+    <li>解析生效后点击「立即检查」，或直接访问上方表格中的验证链接完成所有权验证</li>
+  </ol>
+</div>
+{{else}}
+<div class="empty">尚未绑定自定义域名。{{if .Data.CanManage}}在上方提交你的第一个域名。{{end}}</div>
+{{end}}
+{{end}}

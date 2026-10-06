@@ -1,0 +1,39 @@
+{{define "content"}}
+<div class="page-head">
+  <h2>邀请码</h2>
+  <form method="post" action="/admin/invites" class="inline">
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <button class="btn primary" type="submit">＋ 生成邀请码</button>
+  </form>
+</div>
+
+{{if ne .Data.Mode "invite"}}
+<div class="alert" style="background:var(--info-bg);color:var(--info);border:1px solid #bfdbfe">当前注册模式为「{{registrationModeName .Data.Mode}}」，邀请码仅在「邀请码注册」模式下生效。可在 <a href="/admin/settings">系统设置</a> 中切换。</div>
+{{end}}
+
+{{if .Data.Invites}}
+<table class="list">
+  <tr><th>邀请码</th><th>创建人</th><th>使用者</th><th>创建时间</th><th>使用时间</th><th></th></tr>
+  {{range .Data.Invites}}
+  <tr>
+    <td class="mono"><b>{{.Code}}</b></td>
+    <td>{{.CreatorName}}</td>
+    <td>{{if .UsedByName}}{{.UsedByName}}{{else}}<span class="muted">未使用</span>{{end}}</td>
+    <td class="muted">{{timefmt .CreatedAt}}</td>
+    <td class="muted">{{if .UsedAt}}{{timefmt .UsedAt}}{{else}}-{{end}}</td>
+    <td>
+      {{if not .UsedBy}}
+      <form method="post" action="/admin/invites/delete" class="inline">
+        <input type="hidden" name="_csrf" value="{{.CSRF}}">
+        <input type="hidden" name="code" value="{{.Code}}">
+        <button class="btn small danger" type="submit">作废</button>
+      </form>
+      {{end}}
+    </td>
+  </tr>
+  {{end}}
+</table>
+{{else}}
+<div class="empty">还没有邀请码，点击右上角生成。</div>
+{{end}}
+{{end}}

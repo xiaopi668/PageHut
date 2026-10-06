@@ -1,0 +1,20 @@
+{{define "content"}}
+<h2>审核队列</h2>
+{{if .Data.List}}
+<table class="list">
+  <tr><th>项目</th><th>子域名</th><th>所有者</th><th>大小</th><th>提交时间</th><th></th></tr>
+  {{range .Data.List}}
+  <tr>
+    <td><b>{{.Name}}</b></td>
+    <td class="mono">{{.Slug}}</td>
+    <td>{{.OwnerName}}</td>
+    <td>{{bytesize .Size}}</td>
+    <td class="muted">{{timefmt .UpdatedAt}}</td>
+    <td><a class="btn small primary" href="/review/{{.ID}}">去审核</a></td>
+  </tr>
+  {{end}}
+</table>
+{{else}}
+<div class="empty">没有待审核的项目 🎉</div>
+{{end}}
+{{end}}

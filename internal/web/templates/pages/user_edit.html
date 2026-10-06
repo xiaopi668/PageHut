@@ -1,0 +1,71 @@
+{{define "content"}}
+<div class="page-head">
+  <h2>编辑用户 · {{.Data.Target.Username}}</h2>
+  <a class="btn" href="/admin/users">返回用户列表</a>
+</div>
+
+<div class="card">
+  <h3>基本信息</h3>
+  <dl class="kv">
+    <dt>用户 ID</dt><dd>{{.Data.Target.ID}}</dd>
+    <dt>角色</dt><dd><span class="role-chip {{.Data.Target.Role}}">{{roleName .Data.Target.Role}}</span></dd>
+    <dt>状态</dt><dd>{{if eq .Data.Target.Status "active"}}正常{{else}}已禁用{{end}}</dd>
+    <dt>项目占用</dt><dd>{{.Data.Usage.Count}} 个项目，共 {{bytesize .Data.Usage.Size}}</dd>
+    <dt>注册时间</dt><dd>{{timefmt .Data.Target.CreatedAt}}</dd>
+  </dl>
+</div>
+
+<div class="card">
+  <h3>修改</h3>
+  {{if .Data.IsSelf}}<p class="help">不能修改自己的角色或状态；可以修改密码。</p>{{end}}
+  <form method="post" action="/admin/users/{{.Data.Target.ID}}">
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <div class="inline-form">
+      <label>角色
+        <select name="role" {{if .Data.IsSelf}}disabled{{end}}>
+          <option value="user" {{if eq .Data.Target.Role "user"}}selected{{end}}>普通用户</option>
+          <option value="reviewer" {{if eq .Data.Target.Role "reviewer"}}selected{{end}}>审核员</option>
+          <option value="admin" {{if eq .Data.Target.Role "admin"}}selected{{end}}>管理员</option>
+        </select>
+      </label>
+      <label>状态
+        <select name="status" {{if .Data.IsSelf}}disabled{{end}}>
+          <option value="active" {{if eq .Data.Target.Status "active"}}selected{{end}}>正常</option>
+          <option value="disabled" {{if eq .Data.Target.Status "disabled"}}selected{{end}}>禁用</option>
+        </select>
+      </label>
+    </div>
+    {{if not .Data.IsSelf}}
+    <div class="inline-form">
+      <label>项目数量覆盖（留空=系统默认）<input name="quota_projects" type="number" min="0" value="{{if .Data.Target.QuotaProjects}}{{.Data.Target.QuotaProjects}}{{end}}" placeholder="默认"></label>
+      <label>单项目大小覆盖（MB，留空=系统默认）<input name="quota_project_size_mb" type="number" min="0" value="{{if .Data.Target.QuotaProjectSize}}{{div .Data.Target.QuotaProjectSize 1048576}}{{end}}" placeholder="默认"></label>
+    </div>
+    {{end}}
+    <label>重置密码<input type="password" name="password" autocomplete="new-password" placeholder="留空表示不修改"></label>
+    <button class="btn primary" type="submit">保存修改</button>
+  </form>
+</div>
+
+{{if .Data.Projects}}
+<div class="card">
+  <h3>该项目用户的项目</h3>
+  <table class="list">
+    <tr><th>项目</th><th>子域名</th><th>状态</th><th>大小</th></tr>
+    {{range .Data.Projects}}
+    <tr><td><a href="/projects/{{.ID}}">{{.Name}}</a></td><td class="mono">{{.Slug}}</td><td><span class="badge {{statusClass .Status}}">{{statusName .Status}}</span></td><td>{{bytesize .Size}}</td></tr>
+    {{end}}
+  </table>
+</div>
+{{end}}
+
+{{if not .Data.IsSelf}}
+<div class="card danger-zone">
+  <h3>删除用户</h3>
+  <p class="help">将删除该用户及其全部项目（含站点文件），不可恢复。</p>
+  <form method="post" action="/admin/users/{{.Data.Target.ID}}/delete" onsubmit="return confirm('确认删除用户 {{.Data.Target.Username}} 及其全部项目？')">
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <button class="btn danger" type="submit">删除用户</button>
+  </form>
+</div>
+{{end}}
+{{end}}

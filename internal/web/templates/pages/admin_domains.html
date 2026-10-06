@@ -1,0 +1,44 @@
+{{define "content"}}
+<h2>域名管理</h2>
+<div class="tabs">
+  <a href="/admin/domains" {{if not .Data.Filter}}class="active"{{end}}>全部</a>
+  <a href="/admin/domains?status=pending" {{if eq .Data.Filter "pending"}}class="active"{{end}}>待验证</a>
+  <a href="/admin/domains?status=verified" {{if eq .Data.Filter "verified"}}class="active"{{end}}>待开通</a>
+  <a href="/admin/domains?status=active" {{if eq .Data.Filter "active"}}class="active"{{end}}>已生效</a>
+  <a href="/admin/domains?status=rejected" {{if eq .Data.Filter "rejected"}}class="active"{{end}}>已拒绝</a>
+</div>
+
+{{if .Data.Domains}}
+<table class="list">
+  <tr><th>域名</th><th>项目</th><th>所有者</th><th>状态</th><th>申请时间</th><th style="width:220px">操作</th></tr>
+  {{range .Data.Domains}}
+  <tr>
+    <td class="mono">{{.Domain}}</td>
+    <td><a href="/projects/{{.ProjectID}}">{{.ProjectName}}</a> <span class="muted small">({{.ProjectSlug}})</span></td>
+    <td>{{.OwnerName}}</td>
+    <td><span class="badge {{domainStatusClass .Status}}">{{domainStatusName .Status}}</span></td>
+    <td class="muted">{{timefmt .CreatedAt}}</td>
+    <td class="actions">
+      {{if eq .Status "verified"}}
+      <form method="post" action="/admin/domains/{{.ID}}" class="inline">
+        <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="action" value="activate">
+        <button class="btn small primary" type="submit" onclick="return confirm('确认开通该域名？')">开通</button>
+      </form>
+      {{end}}
+      {{if or (eq .Status "pending") (eq .Status "verified")}}
+      <form method="post" action="/admin/domains/{{.ID}}" class="inline">
+        <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="action" value="reject">
+        <button class="btn small danger" type="submit">拒绝</button>
+      </form>
+      {{end}}
+    </td>
+  </tr>
+  {{end}}
+</table>
+{{else}}
+<div class="empty">没有符合条件的域名申请。</div>
+{{end}}
+<p class="help">提示：用户完成所有权验证（CNAME 或令牌文件）后，域名进入「待开通」状态，由你在此开通。开通后请提醒用户保持解析有效。</p>
+{{end}}

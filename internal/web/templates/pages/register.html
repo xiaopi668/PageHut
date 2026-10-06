@@ -1,0 +1,17 @@
+{{define "content"}}
+<h2>注册</h2>
+{{with .Data.Error}}<div class="alert bad">{{.}}</div>{{end}}
+<form method="post" action="/register">
+  <input type="hidden" name="_csrf" value="{{.CSRF}}">
+  <label>用户名<input name="username" value="{{.Data.Username}}" required autofocus autocomplete="username">
+    <span class="help">2-32 位字母、数字、下划线或短横线</span></label>
+  {{if eq .Data.Mode "invite"}}
+  <label>邀请码<input name="invite" required placeholder="请输入管理员发放的邀请码"></label>
+  {{end}}
+  <label>密码<input type="password" name="password" required autocomplete="new-password">
+    <span class="help">至少 8 位</span></label>
+  <label>确认密码<input type="password" name="password2" required autocomplete="new-password"></label>
+  <button class="btn primary" type="submit" style="width:100%">注册</button>
+</form>
+<p class="muted small" style="margin-top:1rem">已有账号？<a href="/login">直接登录</a></p>
+{{end}}

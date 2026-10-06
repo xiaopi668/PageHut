@@ -1,0 +1,81 @@
+{{define "content"}}
+<div class="page-head">
+  <h2>{{.Data.Project.Name}} <span class="badge {{statusClass .Data.Project.Status}}">{{statusName .Data.Project.Status}}</span></h2>
+</div>
+
+<div class="tabs">
+  <a class="active" href="/projects/{{.Data.Project.ID}}">概览</a>
+  <a href="/projects/{{.Data.Project.ID}}/files">文件</a>
+  <a href="/projects/{{.Data.Project.ID}}/domains">域名 ({{.Data.DomainCount}})</a>
+  {{if and (not .Data.CanManage) .User.IsReviewer}}<a href="/review/{{.Data.Project.ID}}">审核</a>{{end}}
+</div>
+
+{{if eq .Data.Project.Status "rejected"}}
+<div class="alert bad">审核未通过：{{.Data.Project.RejectReason}}</div>
+{{end}}
+{{if and .Data.ReviewOn (eq .Data.Project.Status "pending")}}
+<div class="alert" style="background:var(--warn-bg);color:var(--warn);border:1px solid #fde68a">该项目正在等待审核，审核通过后才能通过域名访问。</div>
+{{end}}
+
+<div class="card">
+  <h3>访问地址</h3>
+  {{if .Data.SitesHost}}
+  <p><code>{{.Data.Project.Slug}}.{{.Data.SitesHost}}</code>　<span class="muted small">（需管理员将该子域名后缀解析到本服务器）</span></p>
+  {{else}}
+  <p class="muted">管理员尚未启用子域名访问，当前可通过 <a href="/preview/{{.Data.Project.ID}}/">预览链接</a> 查看。</p>
+  {{end}}
+  {{if .Data.ReviewOn}}<p class="muted small">未发布状态下，仅你、审核员和管理员可通过预览链接查看。</p>{{end}}
+</div>
+
+{{if .Data.CanManage}}
+<div class="card">
+  <h3>上传新版本（zip）</h3>
+  <p class="help">上传 zip 包会<b>整体替换</b>项目当前内容；解压后总大小不得超过 {{bytesize .Data.SizeLimit}}。{{if .Data.ReviewOn}}上传后将提交审核。{{end}}</p>
+  <form method="post" action="/projects/{{.Data.Project.ID}}/upload" enctype="multipart/form-data" onsubmit="return confirm('确认上传并替换项目全部内容？')">
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <div class="inline-form">
+      <label>zip 包<input type="file" name="zip" accept=".zip" required></label>
+      <button class="btn primary" type="submit">上传{{if .Data.ReviewOn}}并提交审核{{else}}并发布{{end}}</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h3>项目设置</h3>
+  <form method="post" action="/projects/{{.Data.Project.ID}}/meta">
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <div class="inline-form">
+      <label>名称<input name="name" value="{{.Data.Project.Name}}" required></label>
+      <label>子域名前缀<input name="slug" value="{{.Data.Project.Slug}}" required></label>
+      <button class="btn" type="submit">保存</button>
+    </div>
+  </form>
+</div>
+
+<div class="card danger-zone">
+  <h3>危险操作</h3>
+  <p class="help">删除项目将同时删除全部站点文件与域名绑定，不可恢复。请输入子域名前缀 <code>{{.Data.Project.Slug}}</code> 确认。</p>
+  <form method="post" action="/projects/{{.Data.Project.ID}}/delete" class="inline-form" onsubmit="return confirm('真的要删除该项目吗？此操作不可恢复！')">
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <label>确认输入<input name="confirm" required placeholder="{{.Data.Project.Slug}}"></label>
+    <button class="btn danger" type="submit">删除项目</button>
+  </form>
+</div>
+{{else}}
+<div class="card">
+  <p class="muted">你是审核员，该项目对你只读。前往 <a href="/review/{{.Data.Project.ID}}">审核页</a> 查看预览并处理。</p>
+</div>
+{{end}}
+
+<div class="card">
+  <h3>信息</h3>
+  <dl class="kv">
+    <dt>文件数</dt><dd>{{.Data.Files}}</dd>
+    <dt>内容大小</dt><dd>{{bytesize .Data.Size}} / {{bytesize .Data.SizeLimit}}</dd>
+    <dt>所有者</dt><dd>{{.Data.Project.OwnerName}}</dd>
+    <dt>创建时间</dt><dd>{{timefmt .Data.Project.CreatedAt}}</dd>
+    <dt>最近更新</dt><dd>{{timefmt .Data.Project.UpdatedAt}}</dd>
+    {{if .Data.Project.ReviewedAt}}<dt>最近审核</dt><dd>{{timefmt .Data.Project.ReviewedAt}}</dd>{{end}}
+  </dl>
+</div>
+{{end}}

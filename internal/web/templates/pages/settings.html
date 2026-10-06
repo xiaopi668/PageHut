@@ -1,0 +1,42 @@
+{{define "content"}}
+<h2>系统设置</h2>
+<form method="post" action="/admin/settings">
+  <input type="hidden" name="_csrf" value="{{.CSRF}}">
+
+  <div class="card">
+    <h3>基本</h3>
+    <label>站点名称<input name="site_name" value="{{.Data.S.SiteName}}" required></label>
+    <label>注册模式
+      <select name="registration_mode">
+        <option value="public" {{if eq .Data.S.RegistrationMode "public"}}selected{{end}}>公开注册（任何人可注册）</option>
+        <option value="invite" {{if eq .Data.S.RegistrationMode "invite"}}selected{{end}}>邀请码注册</option>
+        <option value="closed" {{if eq .Data.S.RegistrationMode "closed"}}selected{{end}}>关闭注册（仅管理员建号）</option>
+      </select>
+    </label>
+    <label style="display:flex;align-items:center;gap:.5rem;color:var(--text)">
+      <input type="checkbox" name="review_enabled" value="1" style="width:auto" {{if .Data.S.ReviewEnabled}}checked{{end}}>
+      启用审核（开启时项目需审核通过才能访问；关闭时上传即发布）
+    </label>
+  </div>
+
+  <div class="card">
+    <h3>额度</h3>
+    <p class="help">所有数值保存在后台随时可改；免费用户可在「用户管理」中单独覆盖额度。</p>
+    <div class="inline-form">
+      <label>单个项目大小上限（MB，全站硬上限）<input name="max_project_size_mb" type="number" min="1" value="{{$max := div .Data.S.MaxProjectSize 1048576}}{{$max}}" required></label>
+      <label>免费用户项目数量上限<input name="free_project_count" type="number" min="0" value="{{.Data.S.FreeProjectCount}}" required></label>
+      <label>免费用户单项目大小上限（MB）<input name="free_project_size_mb" type="number" min="0" value="{{div .Data.S.FreeProjectSize 1048576}}" required></label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>域名</h3>
+    <label>子域名后缀<input name="sites_host" value="{{.Data.S.SitesHost}}" placeholder="sites.example.com">
+      <span class="help">用户项目将获得 <code>前缀.后缀</code> 的访问地址；留空表示不启用子域名访问。需要给该后缀配置泛解析（* 后缀 → 服务器 IP）。</span></label>
+    <label>面板域名<input name="panel_host" value="{{.Data.S.PanelHost}}" placeholder="dash.example.com">
+      <span class="help">面板所在域名；留空表示「未匹配到任何站点的一律进面板」。IP 与 localhost 访问始终进面板。</span></label>
+  </div>
+
+  <button class="btn primary" type="submit">保存设置</button>
+</form>
+{{end}}

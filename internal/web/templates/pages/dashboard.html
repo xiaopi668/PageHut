@@ -1,0 +1,39 @@
+{{define "content"}}
+<div class="page-head">
+  <h2>我的项目</h2>
+  <a class="btn primary" href="/projects/new">＋ 创建项目</a>
+</div>
+
+<div class="cards">
+  <div class="stat">
+    <div class="num">{{.Data.Count}}{{if ge .Data.CountLimit 100000}}（不限）{{else}} / {{.Data.CountLimit}}{{end}}</div>
+    <div class="lbl">项目数量</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{bytesize .Data.Size}}{{if lt .Data.SizeLimit 9000000000000000000}} / {{bytesize .Data.SizeLimit}}{{end}}</div>
+    <div class="lbl">项目内容总量</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{if .Data.ReviewOn}}开启{{else}}关闭{{end}}</div>
+    <div class="lbl">当前审核模式</div>
+  </div>
+</div>
+
+{{if .Data.Projects}}
+<table class="list">
+  <tr><th>项目</th><th>访问地址</th><th>状态</th><th>大小</th><th>更新时间</th><th></th></tr>
+  {{range .Data.Projects}}
+  <tr>
+    <td><a href="/projects/{{.ID}}"><b>{{.Name}}</b></a></td>
+    <td class="mono">{{if $.Data.SitesHost}}{{.Slug}}.{{$.Data.SitesHost}}{{else}}<span class="muted">未启用子域名（可预览）</span>{{end}}</td>
+    <td><span class="badge {{statusClass .Status}}">{{statusName .Status}}</span></td>
+    <td>{{bytesize .Size}}</td>
+    <td class="muted">{{timefmt .UpdatedAt}}</td>
+    <td class="actions"><a class="btn small" href="/projects/{{.ID}}">管理</a></td>
+  </tr>
+  {{end}}
+</table>
+{{else}}
+<div class="empty">还没有项目，点击右上角「创建项目」开始托管你的第一个静态站。</div>
+{{end}}
+{{end}}

@@ -1,0 +1,77 @@
+{{define "content"}}
+<div class="page-head">
+  <h2>{{.Data.Project.Name}} <span class="badge {{statusClass .Data.Project.Status}}">{{statusName .Data.Project.Status}}</span></h2>
+  <a class="btn" href="/review">返回队列</a>
+</div>
+
+<div class="card">
+  <dl class="kv">
+    <dt>子域名</dt><dd class="mono">{{.Data.Project.Slug}}</dd>
+    <dt>所有者</dt><dd>{{.Data.Project.OwnerName}}</dd>
+    <dt>文件数</dt><dd>{{.Data.Files}}</dd>
+    <dt>内容大小</dt><dd>{{bytesize .Data.Project.Size}}</dd>
+    <dt>提交时间</dt><dd>{{timefmt .Data.Project.UpdatedAt}}</dd>
+    {{if .Data.Project.RejectReason}}<dt>最近驳回理由</dt><dd>{{.Data.Project.RejectReason}}</dd>{{end}}
+  </dl>
+</div>
+
+<div class="card">
+  <h3>站点预览</h3>
+  <p class="help">下方为内嵌预览，也可 <a href="/preview/{{.Data.Project.ID}}/" target="_blank">在新窗口打开</a>。</p>
+  <iframe class="preview" src="/preview/{{.Data.Project.ID}}/" sandbox="allow-same-origin allow-scripts allow-forms"></iframe>
+</div>
+
+<div class="card">
+  <h3>审核操作</h3>
+  {{if eq .Data.Project.Status "pending"}}
+  <form method="post" action="/review/{{.Data.Project.ID}}">
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <input type="hidden" name="action" value="approve">
+    <p><button class="btn primary" type="submit" onclick="return confirm('确认通过该项目的审核？')">✓ 通过并发布</button></p>
+  </form>
+  <form method="post" action="/review/{{.Data.Project.ID}}">
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <input type="hidden" name="action" value="reject">
+    <label>驳回理由（必填，将通知项目所有者）<textarea name="reason" rows="3" placeholder="请说明驳回原因"></textarea></label>
+    <button class="btn danger" type="submit" onclick="return confirm('确认驳回该项目？')">✗ 驳回</button>
+  </form>
+  {{else}}
+  <p class="muted">该项目当前不在待审核状态。</p>
+  {{end}}
+
+  {{if .Data.IsAdmin}}
+  <hr style="border:none;border-top:1px solid var(--border);margin:1rem 0">
+  <p class="help">管理员操作：</p>
+  <div class="inline-form">
+    <form method="post" action="/review/{{.Data.Project.ID}}" class="inline">
+      <input type="hidden" name="_csrf" value="{{.CSRF}}">
+      <input type="hidden" name="action" value="publish">
+      <button class="btn" type="submit" onclick="return confirm('跳过审核直接发布？')">强制发布</button>
+    </form>
+    <form method="post" action="/review/{{.Data.Project.ID}}" class="inline-form">
+      <input type="hidden" name="_csrf" value="{{.CSRF}}">
+      <input type="hidden" name="action" value="suspend">
+      <label>下架原因（可选）<input name="reason" placeholder="选填"></label>
+      <button class="btn danger" type="submit" onclick="return confirm('确认下架该项目？')">下架</button>
+    </form>
+  </div>
+  {{end}}
+</div>
+
+{{if .Data.History}}
+<div class="card">
+  <h3>审核记录</h3>
+  <table class="list">
+    <tr><th>时间</th><th>审核人</th><th>动作</th><th>理由</th></tr>
+    {{range .Data.History}}
+    <tr>
+      <td class="muted">{{timefmt .CreatedAt}}</td>
+      <td>{{.ReviewerName}}</td>
+      <td>{{if eq .Action "approve"}}<span class="badge ok">通过</span>{{else}}<span class="badge bad">驳回</span>{{end}}</td>
+      <td>{{.Reason}}</td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+{{end}}
+{{end}}

@@ -1,0 +1,72 @@
+{{define "content"}}
+<div class="page-head">
+  <h2>文件管理 · {{.Data.Project.Name}}</h2>
+  <a class="btn" href="/projects/{{.Data.Project.ID}}">返回概览</a>
+</div>
+
+<div class="crumbs">
+  {{range $i, $c := .Data.Crumbs}}{{if $i}} / {{end}}<a href="/projects/{{$.Data.Project.ID}}/files?dir={{urlquery $c.Path}}">{{$c.Name}}</a>{{end}}
+</div>
+
+{{if .Data.CanManage}}
+<div class="card">
+  <div class="inline-form">
+    <form method="post" action="/projects/{{.Data.Project.ID}}/file/upload" enctype="multipart/form-data" class="inline-form">
+      <input type="hidden" name="_csrf" value="{{.CSRF}}">
+      <input type="hidden" name="dir" value="{{.Data.Dir}}">
+      <label>上传文件<input type="file" name="file" required></label>
+      <button class="btn" type="submit">上传</button>
+    </form>
+    <form method="post" action="/projects/{{.Data.Project.ID}}/file/mkdir" class="inline-form">
+      <input type="hidden" name="_csrf" value="{{.CSRF}}">
+      <input type="hidden" name="dir" value="{{.Data.Dir}}">
+      <label>新建目录<input name="name" placeholder="目录名" required></label>
+      <button class="btn" type="submit">创建</button>
+    </form>
+  </div>
+  <p class="help">提示：站点根目录需要 <code>index.html</code> 才能正常访问。</p>
+</div>
+{{end}}
+
+{{if .Data.Entries}}
+<table class="list">
+  <tr><th>名称</th><th>大小</th><th>修改时间</th>{{if .Data.CanManage}}<th style="width:220px">操作</th>{{end}}</tr>
+  {{range .Data.Entries}}
+  {{if .IsDir}}
+  <tr>
+    <td><a href="/projects/{{$.Data.Project.ID}}/files?dir={{if eq $.Data.Dir "."}}{{urlquery .Name}}{{else}}{{urlquery $.Data.Dir}}/{{urlquery .Name}}{{end}}"><b>📁 {{.Name}}</b></a></td>
+    <td class="muted">-</td>
+    <td class="muted">{{timefmt .ModTime}}</td>
+    {{if $.Data.CanManage}}
+    <td><form method="post" action="/projects/{{$.Data.Project.ID}}/file/delete" class="inline" onsubmit="return confirm('删除目录 {{.Name}} 及其全部内容？')">
+      <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+      <input type="hidden" name="dir" value="{{$.Data.Dir}}">
+      <input type="hidden" name="path" value="{{if eq $.Data.Dir "."}}{{.Name}}{{else}}{{$.Data.Dir}}/{{.Name}}{{end}}">
+      <button class="btn small danger" type="submit">删除</button>
+    </form></td>
+    {{end}}
+  </tr>
+  {{else}}
+  <tr>
+    <td><a href="/projects/{{$.Data.Project.ID}}/file?path={{if eq $.Data.Dir "."}}{{urlquery .Name}}{{else}}{{urlquery $.Data.Dir}}/{{urlquery .Name}}{{end}}">{{.Name}}</a></td>
+    <td>{{bytesize .Size}}</td>
+    <td class="muted">{{timefmt .ModTime}}</td>
+    {{if $.Data.CanManage}}
+    <td class="actions">
+      <a class="btn small" href="/projects/{{$.Data.Project.ID}}/file/download?path={{if eq $.Data.Dir "."}}{{urlquery .Name}}{{else}}{{urlquery $.Data.Dir}}/{{urlquery .Name}}{{end}}">下载</a>
+      <form method="post" action="/projects/{{$.Data.Project.ID}}/file/delete" class="inline" onsubmit="return confirm('删除文件 {{.Name}}？')">
+        <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="dir" value="{{$.Data.Dir}}">
+        <input type="hidden" name="path" value="{{if eq $.Data.Dir "."}}{{.Name}}{{else}}{{$.Data.Dir}}/{{.Name}}{{end}}">
+        <button class="btn small danger" type="submit">删除</button>
+      </form>
+    </td>
+    {{end}}
+  </tr>
+  {{end}}
+  {{end}}
+</table>
+{{else}}
+<div class="empty">该目录为空。{{if .Data.CanManage}}上传文件或创建目录开始建站。{{end}}</div>
+{{end}}
+{{end}}

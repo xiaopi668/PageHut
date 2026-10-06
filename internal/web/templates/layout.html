@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{.Title}} · {{.Settings.SiteName}}</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body{{if not .User}} class="auth-body"{{end}}>
+{{if .User}}
+<div class="shell">
+<aside class="sidebar">
+  <div class="brand"><a href="/">{{.Settings.SiteName}}</a><span class="brand-tag">PageHut</span></div>
+  <nav>
+    <a href="/">我的项目</a>
+    <a href="/projects/new">创建项目</a>
+    {{if .User.IsReviewer}}<a href="/review">审核队列</a>{{end}}
+    <a href="/notifications">通知{{if .Unread}} <span class="pill">{{.Unread}}</span>{{end}}</a>
+    {{if .User.IsAdmin}}
+    <div class="nav-sec">管理</div>
+    <a href="/admin/settings">系统设置</a>
+    <a href="/admin/users">用户管理</a>
+    <a href="/admin/invites">邀请码</a>
+    <a href="/admin/domains">域名管理</a>
+    <a href="/admin/audit">操作日志</a>
+    {{end}}
+  </nav>
+  <div class="side-user">
+    <div class="uname">{{.User.Username}} <span class="role-chip {{.User.Role}}">{{roleName .User.Role}}</span></div>
+    <div class="side-links">
+      <a href="/account">账号设置</a>
+      <form method="post" action="/logout" class="inline"><input type="hidden" name="_csrf" value="{{.CSRF}}"><button type="submit" class="linklike">退出</button></form>
+    </div>
+  </div>
+</aside>
+<main class="main">
+  {{if .Flash}}<div class="flash">{{.Flash}}</div>{{end}}
+  {{template "content" .}}
+</main>
+</div>
+{{else}}
+<main class="auth-main">
+  <div class="auth-card">
+    <div class="auth-brand">{{.Settings.SiteName}}</div>
+    {{if .Flash}}<div class="flash">{{.Flash}}</div>{{end}}
+    {{template "content" .}}
+  </div>
+</main>
+{{end}}
+</body>
+</html>

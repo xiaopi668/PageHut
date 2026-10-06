@@ -1,0 +1,25 @@
+{{define "content"}}
+<div class="page-head">
+  <h2>通知</h2>
+  <form method="post" action="/notifications/read" class="inline">
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <button class="btn" type="submit">全部标为已读</button>
+  </form>
+</div>
+
+{{if .Data.List}}
+<table class="list">
+  {{range .Data.List}}
+  <tr {{if not .Read}}style="background:#eef2ff"{{end}}>
+    <td>
+      <b>{{.Title}}</b>
+      <div class="small muted">{{.Body}}</div>
+    </td>
+    <td class="muted small mono" style="width:150px">{{timefmt .CreatedAt}}</td>
+  </tr>
+  {{end}}
+</table>
+{{else}}
+<div class="empty">暂无通知。</div>
+{{end}}
+{{end}}

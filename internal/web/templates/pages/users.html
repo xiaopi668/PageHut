@@ -1,0 +1,21 @@
+{{define "content"}}
+<div class="page-head">
+  <h2>用户管理</h2>
+  <a class="btn primary" href="/admin/users/new">＋ 创建用户</a>
+</div>
+
+<table class="list">
+  <tr><th>ID</th><th>用户名</th><th>角色</th><th>状态</th><th>额度覆盖</th><th>注册时间</th><th></th></tr>
+  {{range .Data.Users}}
+  <tr>
+    <td class="muted">{{.ID}}</td>
+    <td><b>{{.Username}}</b></td>
+    <td><span class="role-chip {{.Role}}">{{roleName .Role}}</span></td>
+    <td>{{if eq .Status "active"}}<span class="badge ok">正常</span>{{else}}<span class="badge bad">已禁用</span>{{end}}</td>
+    <td class="small">{{if .QuotaProjects}}{{.QuotaProjects}} 个项目{{else}}—{{end}} {{if .QuotaProjectSize}}/ {{bytesize .QuotaProjectSize}}{{end}}</td>
+    <td class="muted">{{timefmt .CreatedAt}}</td>
+    <td><a class="btn small" href="/admin/users/{{.ID}}">编辑</a></td>
+  </tr>
+  {{end}}
+</table>
+{{end}}

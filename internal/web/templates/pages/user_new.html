@@ -1,0 +1,21 @@
+{{define "content"}}
+<h2>创建用户</h2>
+<div class="card">
+  {{with .Data.Error}}<div class="alert bad">{{.}}</div>{{end}}
+  <form method="post" action="/admin/users/new">
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <label>用户名<input name="username" value="{{.Data.Username}}" required autofocus></label>
+    <label>初始密码<input type="password" name="password" required autocomplete="new-password">
+      <span class="help">至少 8 位，创建后请告知用户尽快修改</span></label>
+    <label>角色
+      <select name="role">
+        <option value="user">普通用户</option>
+        <option value="reviewer">审核员</option>
+        <option value="admin">管理员</option>
+      </select>
+    </label>
+    <button class="btn primary" type="submit">创建</button>
+    <a class="btn" href="/admin/users">取消</a>
+  </form>
+</div>
+{{end}}

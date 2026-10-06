@@ -1,0 +1,24 @@
+{{define "content"}}
+<h2>操作日志 <span class="muted small">共 {{.Data.Total}} 条</span></h2>
+
+{{if .Data.Entries}}
+<table class="list">
+  <tr><th style="width:150px">时间</th><th style="width:130px">操作者</th><th style="width:170px">动作</th><th>详情</th></tr>
+  {{range .Data.Entries}}
+  <tr>
+    <td class="muted mono small">{{timefmt .CreatedAt}}</td>
+    <td>{{.ActorName}}</td>
+    <td class="mono small">{{.Action}}</td>
+    <td class="small">{{.Detail}}</td>
+  </tr>
+  {{end}}
+</table>
+<div class="pagination">
+  {{if gt .Data.Page 1}}<a class="btn small" href="/admin/audit?page={{sub1 .Data.Page}}">上一页</a>{{end}}
+  <span class="muted small">第 {{.Data.Page}} / {{.Data.Pages}} 页</span>
+  {{if lt .Data.Page .Data.Pages}}<a class="btn small" href="/admin/audit?page={{add1 .Data.Page}}">下一页</a>{{end}}
+</div>
+{{else}}
+<div class="empty">暂无日志。</div>
+{{end}}
+{{end}}

@@ -1,0 +1,14 @@
+services:
+  pagehut:
+    build: .
+    image: pagehut:latest
+    container_name: pagehut
+    restart: unless-stopped
+    ports:
+      - "8080:8080"        # 面板与站点（HTTP 模式，配合外部反代）
+      # - "80:80"           # TLS=auto 模式：ACME HTTP-01 质询 + 跳转
+      # - "443:443"         # TLS=auto 模式：HTTPS
+    volumes:
+      - ./data:/data       # 数据库 + 站点文件 + 证书缓存
+    # 内置自动 HTTPS（需 80/443 直达本机，且已在管理后台配置好域名）：
+    # command: ["-data", "/data", "-tls", "auto", "-http", ":80", "-https", ":443", "-acme-email", "you@example.com"]
