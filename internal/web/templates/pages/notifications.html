@@ -10,7 +10,7 @@
 {{if .Data.List}}
 <table class="list">
   {{range .Data.List}}
-  <tr {{if not .Read}}style="background:#eef2ff"{{end}}>
+  <tr {{if not .Read}}style="background:rgba(87,212,245,.09);box-shadow:inset 3px 0 0 var(--accent)"{{end}}>
     <td>
       <b>{{.Title}}</b>
       <div class="small muted">{{.Body}}</div>
