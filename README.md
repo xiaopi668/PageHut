@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/logo.png" alt="PageHut logo" width="140">
+
 # PageHut
 
 **可自托管的静态网页托管平台** —— 单二进制、低内存、自带审核与额度体系。

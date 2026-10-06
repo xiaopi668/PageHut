@@ -4,13 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{.Title}} · {{.Settings.SiteName}}</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body{{if not .User}} class="auth-body"{{end}}>
 {{if .User}}
 <div class="shell">
 <aside class="sidebar">
-  <div class="brand"><a href="/">{{.Settings.SiteName}}</a><span class="brand-tag">PageHut</span></div>
+  <div class="brand"><img src="/static/logo.png" alt="" class="brand-logo"><a href="/">{{.Settings.SiteName}}</a></div>
   <nav>
     <a href="/">我的项目</a>
     <a href="/projects/new">创建项目</a>
@@ -41,7 +42,7 @@
 {{else}}
 <main class="auth-main">
   <div class="auth-card">
-    <div class="auth-brand">{{.Settings.SiteName}}</div>
+    <div class="auth-brand"><img src="/static/logo.png" alt="PageHut"><span>{{.Settings.SiteName}}</span></div>
     {{if .Flash}}<div class="flash">{{.Flash}}</div>{{end}}
     {{template "content" .}}
   </div>

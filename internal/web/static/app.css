@@ -40,9 +40,9 @@ h3 { margin: 0 0 .75rem; font-size: 1.05rem; }
   width: 220px; flex-shrink: 0; background: var(--sidebar-bg); color: var(--sidebar-text);
   display: flex; flex-direction: column; padding: 1.1rem .8rem;
 }
-.brand { margin-bottom: 1.2rem; padding: 0 .5rem; }
+.brand { margin-bottom: 1.2rem; padding: 0 .5rem; display: flex; align-items: center; gap: .5rem; }
+.brand-logo { width: 26px; height: 26px; border-radius: 6px; display: block; }
 .brand a { color: #fff; font-size: 1.1rem; font-weight: 700; }
-.brand-tag { display: block; font-size: .68rem; letter-spacing: .12em; color: #64748b; text-transform: uppercase; }
 .sidebar nav { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .sidebar nav a { color: var(--sidebar-text); padding: .45rem .7rem; border-radius: 8px; display: flex; align-items: center; gap: .4rem; }
 .sidebar nav a:hover { background: #1f2937; color: #e5e7eb; text-decoration: none; }
@@ -62,7 +62,8 @@ h3 { margin: 0 0 .75rem; font-size: 1.05rem; }
 .auth-body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
 .auth-main { width: 100%; display: flex; justify-content: center; padding: 1rem; }
 .auth-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 2rem; width: 380px; box-shadow: 0 8px 30px rgba(17,24,39,.06); }
-.auth-brand { text-align: center; font-size: 1.25rem; font-weight: 700; margin-bottom: 1.2rem; color: var(--accent); }
+.auth-brand { display: flex; flex-direction: column; align-items: center; gap: .5rem; font-size: 1.25rem; font-weight: 700; margin-bottom: 1.2rem; color: var(--accent); }
+.auth-brand img { width: 56px; height: 56px; border-radius: 12px; }
 
 /* ---------- 通用组件 ---------- */
 .flash { background: var(--ok-bg); color: #14532d; border: 1px solid #bbf7d0; border-radius: var(--radius); padding: .6rem 1rem; margin-bottom: 1rem; }
