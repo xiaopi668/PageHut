@@ -37,8 +37,9 @@ docker compose logs | grep 初始管理员   # 首次启动会打印初始管理
 
 ### 裸二进制
 
+从 [Releases](https://github.com/xiaopi668/PageHut/releases) 下载对应平台二进制（linux/darwin，amd64/arm64），或自行构建（见下）：
+
 ```bash
-# 从 dist/ 或自行构建（见下）
 ./pagehut -data ./data -http :8080
 ```
 
@@ -49,16 +50,18 @@ docker compose logs | grep 初始管理员   # 首次启动会打印初始管理
 初始管理员密码: XXXXXXXX
 ```
 
+> Docker 镜像：每次发布版本（打 `v*` 标签）会自动构建多架构镜像并推送到 `ghcr.io/xiaopi668/pagehut`（amd64/arm64）。
+
 ## 启动参数
 
 | 参数 | 环境变量 | 默认 | 说明 |
 |---|---|---|---|
-| `-data` | `PAGEPORT_DATA` | `./data` | 数据目录（数据库、站点文件、证书缓存） |
-| `-http` | `PAGEPORT_HTTP` | `:8080` | HTTP 监听地址；auto 模式下为 ACME/跳转端口（通常 `:80`） |
-| `-https` | `PAGEPORT_HTTPS` | `:443` | HTTPS 监听地址（仅 auto 模式） |
-| `-tls` | `PAGEPORT_TLS` | `manual` | `manual`：外部反代终结 TLS；`auto`：内置 ACME 自动签发 |
-| `-acme-email` | `PAGEPORT_ACME_EMAIL` | 空 | ACME 注册邮箱（auto 模式建议填写） |
-| `-acme-cache` | `PAGEPORT_ACME_CACHE` | `数据目录/acme` | 证书缓存目录 |
+| `-data` | `PAGEHUT_DATA` | `./data` | 数据目录（数据库、站点文件、证书缓存） |
+| `-http` | `PAGEHUT_HTTP` | `:8080` | HTTP 监听地址；auto 模式下为 ACME/跳转端口（通常 `:80`） |
+| `-https` | `PAGEHUT_HTTPS` | `:443` | HTTPS 监听地址（仅 auto 模式） |
+| `-tls` | `PAGEHUT_TLS` | `manual` | `manual`：外部反代终结 TLS；`auto`：内置 ACME 自动签发 |
+| `-acme-email` | `PAGEHUT_ACME_EMAIL` | 空 | ACME 注册邮箱（auto 模式建议填写） |
+| `-acme-cache` | `PAGEHUT_ACME_CACHE` | `数据目录/acme` | 证书缓存目录 |
 
 运行期设置（注册模式、审核开关、额度、子域名后缀、面板域名等）全部在**管理后台 → 系统设置**中修改，实时生效。
 
@@ -93,4 +96,4 @@ bash scripts/build.sh # 交叉编译 linux/amd64 + linux/arm64 到 dist/
 
 ## License
 
-[MIT](LICENSE)
+[AGPL-3.0](LICENSE)

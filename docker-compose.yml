@@ -1,5 +1,7 @@
 services:
   pagehut:
+    # 直接用官方镜像（推荐）：
+    #   image: ghcr.io/xiaopi668/pagehut:latest
     build: .
     image: pagehut:latest
     container_name: pagehut

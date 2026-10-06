@@ -37,17 +37,17 @@ func Parse() (*Config, error) {
 	c := &Config{}
 	var data, tlsMode string
 	fs := flag.CommandLine
-	fs.StringVar(&data, "data", envOr("PAGEPORT_DATA", "./data"),
+	fs.StringVar(&data, "data", envOr("PAGEHUT_DATA", "./data"),
 		"数据目录（数据库与站点文件）")
-	fs.StringVar(&c.HTTPAddr, "http", envOr("PAGEPORT_HTTP", ":8080"),
+	fs.StringVar(&c.HTTPAddr, "http", envOr("PAGEHUT_HTTP", ":8080"),
 		"HTTP 监听地址（manual 模式主端口；auto 模式为 ACME/跳转端口，通常 :80）")
-	fs.StringVar(&c.HTTPSAddr, "https", envOr("PAGEPORT_HTTPS", ":443"),
+	fs.StringVar(&c.HTTPSAddr, "https", envOr("PAGEHUT_HTTPS", ":443"),
 		"HTTPS 监听地址（仅 auto 模式）")
-	fs.StringVar(&tlsMode, "tls", envOr("PAGEPORT_TLS", "manual"),
+	fs.StringVar(&tlsMode, "tls", envOr("PAGEHUT_TLS", "manual"),
 		"TLS 模式：manual（外部反代终结 TLS）或 auto（内置 ACME 自动签发）")
-	fs.StringVar(&c.ACMEEmail, "acme-email", envOr("PAGEPORT_ACME_EMAIL", ""),
+	fs.StringVar(&c.ACMEEmail, "acme-email", envOr("PAGEHUT_ACME_EMAIL", ""),
 		"ACME 注册邮箱（auto 模式建议填写）")
-	fs.StringVar(&c.ACMECache, "acme-cache", envOr("PAGEPORT_ACME_CACHE", ""),
+	fs.StringVar(&c.ACMECache, "acme-cache", envOr("PAGEHUT_ACME_CACHE", ""),
 		"ACME 证书缓存目录（默认为 数据目录/acme）")
 	flag.Parse()
 

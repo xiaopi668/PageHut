@@ -21,7 +21,8 @@ import (
 	"pagehut/internal/web"
 )
 
-const version = "0.1.0"
+// version 可由构建时注入：go build -ldflags "-X main.version=x.y.z"。
+var version = "0.1.0"
 
 func main() {
 	log.SetFlags(log.LstdFlags)
