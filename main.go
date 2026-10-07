@@ -27,7 +27,7 @@ import (
 )
 
 // version 可由构建时注入：go build -ldflags "-X main.version=x.y.z"。
-var version = "0.1.1"
+var version = "0.1.2"
 
 func main() {
 	log.SetFlags(log.LstdFlags)
