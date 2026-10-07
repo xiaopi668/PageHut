@@ -3,8 +3,10 @@ package web
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"embed"
+	"encoding/hex"
 	"errors"
 	"html/template"
 	"io/fs"
@@ -376,7 +378,13 @@ func (w *Web) buildPanelMux() (http.Handler, error) {
 	mux := http.NewServeMux()
 	// 静态资源只服务具名文件：http.FileServer 对目录会输出文件清单，
 	// 这里显式拒绝以 / 结尾的请求，不做目录列表。
-	mux.Handle("GET /static/{path...}", http.StripPrefix("/static/", noDirList(http.FileServer(http.FS(staticSub)))))
+	// 同时补上 no-cache + 内容 ETag：面板升级后浏览器必须重新校验，
+	// 否则会拿上一版的 CSS 渲染新页面（曾导致注册页验证码行错位）。
+	staticHandler, err := newStaticHandler(staticSub)
+	if err != nil {
+		return nil, err
+	}
+	mux.Handle("GET /static/{path...}", staticHandler)
 	// 健康检查：无需认证，供容器 / K8s 探针使用。
 	mux.HandleFunc("GET /healthz", w.healthz)
 
@@ -539,6 +547,45 @@ func pathID(rw http.ResponseWriter, r *http.Request, name string) int64 {
 
 func wErr(rw http.ResponseWriter, msg string, code int) {
 	http.Error(rw, msg, code)
+}
+
+// newStaticHandler 组装静态资源处理器：禁止目录列表 + no-cache + 内容 ETag。
+func newStaticHandler(staticSub fs.FS) (http.Handler, error) {
+	etags, err := staticETags(staticSub)
+	if err != nil {
+		return nil, err
+	}
+	inner := http.StripPrefix("/static/", noDirList(http.FileServer(http.FS(staticSub))))
+	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		if et := etags[strings.TrimPrefix(r.URL.Path, "/static/")]; et != "" {
+			// no-cache 表示「可以缓存，但每次都要带 If-None-Match 回来校验」，
+			// 内容没变时 FileServer 会回 304，几乎不增加开销。
+			rw.Header().Set("ETag", et)
+			rw.Header().Set("Cache-Control", "no-cache")
+		}
+		inner.ServeHTTP(rw, r)
+	}), nil
+}
+
+// staticETags 为嵌入的静态资源计算内容 ETag（启动时算一次）。
+func staticETags(fsys fs.FS) (map[string]string, error) {
+	out := map[string]string{}
+	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := fs.ReadFile(fsys, p)
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(b)
+		out[p] = `"` + hex.EncodeToString(sum[:8]) + `"`
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // safeNext 校验登录后的跳转地址，只允许站内路径。

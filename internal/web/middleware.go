@@ -125,6 +125,11 @@ func (w *Web) securityHeaders(next http.Handler) http.Handler {
 			h.Set("X-Frame-Options", "DENY")
 			h.Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
 			h.Set("Content-Security-Policy", w.panelCSP())
+			// 面板页面不缓存：升级后浏览器必须拿新页面（静态资源有自己的
+			// no-cache + ETag 策略，交给 /static/ 处理器）。
+			if !strings.HasPrefix(r.URL.Path, "/static/") {
+				h.Set("Cache-Control", "no-store")
+			}
 		}
 		next.ServeHTTP(rw, r)
 	})
