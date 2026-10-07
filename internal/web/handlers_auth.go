@@ -2,7 +2,6 @@ package web
 
 import (
 	"log"
-	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -13,11 +12,21 @@ import (
 	"pagehut/internal/store"
 )
 
-// ---------- 登录限流（内存版，按 IP） ----------
+// maxPasswordLen 是 bcrypt 能接受的密码字节上限（超过会直接返回错误）。
+const maxPasswordLen = 72
 
+// ---------- 登录限流（内存版） ----------
+
+// loginLimiter 同时按两个维度计数：
+//   - IP：防止单一来源横扫大量账号；
+//   - IP + 用户名：防止针对某个账号的暴力破解。
+//
+// 之所以不用「只按 IP」，是因为反代部署下所有请求都来自代理地址，
+// 只按 IP 会让任何人对登录页试错几次就锁死整站登录。
 type loginLimiter struct {
-	mu    sync.Mutex
-	fails map[string]*failInfo
+	mu        sync.Mutex
+	fails     map[string]*failInfo
+	lastSweep time.Time
 }
 
 type failInfo struct {
@@ -28,47 +37,83 @@ type failInfo struct {
 var limiter = &loginLimiter{fails: map[string]*failInfo{}}
 
 const (
-	maxFails     = 8
-	failCooldown = 15 * time.Minute
+	maxFailsPerIP   = 30
+	maxFailsPerUser = 8
+	failCooldown    = 15 * time.Minute
+	sweepInterval   = time.Minute
 )
 
-func (l *loginLimiter) blocked(key string) bool {
+func ipKey(ip string) string      { return "ip|" + ip }
+func userKey(ip, u string) string { return "user|" + ip + "|" + u }
+
+// blocked 判断该来源 / 该账号是否已被限流。
+func (l *loginLimiter) blocked(ip, username string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	now := time.Now()
+	if l.overLimit(ipKey(ip), maxFailsPerIP, now) {
+		return true
+	}
+	if username != "" && l.overLimit(userKey(ip, username), maxFailsPerUser, now) {
+		return true
+	}
+	return false
+}
+
+func (l *loginLimiter) overLimit(key string, max int, now time.Time) bool {
 	fi, ok := l.fails[key]
 	if !ok {
 		return false
 	}
-	if time.Now().After(fi.until) {
+	if now.After(fi.until) {
 		delete(l.fails, key)
 		return false
 	}
-	return fi.count >= maxFails
+	return fi.count >= max
 }
 
-func (l *loginLimiter) fail(key string) {
+// fail 记一次失败。
+func (l *loginLimiter) fail(ip, username string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	now := time.Now()
+	l.bump(ipKey(ip), now)
+	if username != "" {
+		l.bump(userKey(ip, username), now)
+	}
+	l.sweepLocked(now)
+}
+
+func (l *loginLimiter) bump(key string, now time.Time) {
 	fi, ok := l.fails[key]
-	if !ok || time.Now().After(fi.until) {
-		l.fails[key] = &failInfo{count: 1, until: time.Now().Add(failCooldown)}
+	if !ok || now.After(fi.until) {
+		l.fails[key] = &failInfo{count: 1, until: now.Add(failCooldown)}
 		return
 	}
 	fi.count++
 }
 
-func (l *loginLimiter) reset(key string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	delete(l.fails, key)
+// sweepLocked 定期清理过期条目，避免字典随不同 IP/用户名无限增长。
+func (l *loginLimiter) sweepLocked(now time.Time) {
+	if now.Sub(l.lastSweep) < sweepInterval {
+		return
+	}
+	l.lastSweep = now
+	for k, fi := range l.fails {
+		if now.After(fi.until) {
+			delete(l.fails, k)
+		}
+	}
 }
 
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
+// reset 登录成功后清理该来源与账号的失败计数。
+func (l *loginLimiter) reset(ip, username string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	delete(l.fails, ipKey(ip))
+	if username != "" {
+		delete(l.fails, userKey(ip, username))
 	}
-	return host
 }
 
 // ---------- 登录 / 注册 / 登出 ----------
@@ -85,17 +130,17 @@ func (w *Web) loginPage(rw http.ResponseWriter, r *http.Request) {
 }
 
 func (w *Web) loginSubmit(rw http.ResponseWriter, r *http.Request) {
-	ip := clientIP(r)
-	if limiter.blocked(ip) {
+	ip := w.clientIP(r)
+	username := strings.TrimSpace(r.FormValue("username"))
+	if limiter.blocked(ip, username) {
 		w.errorPage(rw, r, http.StatusTooManyRequests, "尝试次数过多，请 15 分钟后再试。")
 		return
 	}
-	username := strings.TrimSpace(r.FormValue("username"))
 	password := r.FormValue("password")
 	next := safeNext(r.FormValue("next"))
 
 	fail := func(msg string) {
-		limiter.fail(ip)
+		limiter.fail(ip, username)
 		w.render(rw, r, http.StatusUnauthorized, "login", "登录", map[string]any{
 			"Next": next, "Error": msg, "Username": username,
 		})
@@ -125,7 +170,7 @@ func (w *Web) loginSubmit(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setCookie(rw, cookieSession, token, int(sessionTTL/time.Second), true, isSecureRequest(r))
-	limiter.reset(ip)
+	limiter.reset(ip, u.Username)
 	w.st.Audit(&u.ID, u.Username, "user.login", "")
 	http.Redirect(rw, r, next, http.StatusSeeOther)
 }
@@ -178,6 +223,10 @@ func (w *Web) registerSubmit(rw http.ResponseWriter, r *http.Request) {
 	}
 	if len(password) < 8 {
 		fail("密码至少 8 位。")
+		return
+	}
+	if len(password) > maxPasswordLen {
+		fail("密码过长：bcrypt 上限为 72 字节（中文约 24 个字）。")
 		return
 	}
 	if password != password2 {
@@ -266,6 +315,10 @@ func (w *Web) accountPasswordSubmit(rw http.ResponseWriter, r *http.Request) {
 	}
 	if len(newPass) < 8 {
 		fail("新密码至少 8 位。")
+		return
+	}
+	if len(newPass) > maxPasswordLen {
+		fail("新密码过长：bcrypt 上限为 72 字节（中文约 24 个字）。")
 		return
 	}
 	if newPass != confirm {

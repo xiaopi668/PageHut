@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 
 	"pagehut/internal/config"
 	"pagehut/internal/sitefs"
@@ -33,6 +34,12 @@ type Web struct {
 	disk  *storage.Storage
 	tpl   *tplSets
 	panel http.Handler
+
+	csrfKey []byte // CSRF 令牌派生密钥（进程级随机）
+
+	// settingsCache 缓存运行期设置。Host 调度与每个页面渲染都要读设置，
+	// 若每个请求都查一次库，静态站点热路径会被单条 SQL 串行化。
+	settingsCache atomic.Pointer[store.Settings]
 }
 
 // Build 组装面板路由、模板与调度器。
@@ -41,7 +48,10 @@ func Build(cfg *config.Config, db *sql.DB, st *store.Store, disk *storage.Storag
 	if err != nil {
 		return nil, err
 	}
-	w := &Web{cfg: cfg, st: st, disk: disk, tpl: sets}
+	w := &Web{cfg: cfg, st: st, disk: disk, tpl: sets, csrfKey: randBytes(32)}
+	if _, err := w.reloadSettings(); err != nil {
+		return nil, err
+	}
 	panel, err := w.buildPanelMux()
 	if err != nil {
 		return nil, err
@@ -50,12 +60,33 @@ func Build(cfg *config.Config, db *sql.DB, st *store.Store, disk *storage.Storag
 	return w, nil
 }
 
+// settings 返回缓存的设置；缓存未命中时回源。
+func (w *Web) settings() (*store.Settings, error) {
+	if st := w.settingsCache.Load(); st != nil {
+		return st, nil
+	}
+	return w.reloadSettings()
+}
+
+// reloadSettings 从数据库重新加载设置并写入缓存。
+func (w *Web) reloadSettings() (*store.Settings, error) {
+	st, err := w.st.GetSettings()
+	if err != nil {
+		return nil, err
+	}
+	w.settingsCache.Store(st)
+	return st, nil
+}
+
+// invalidateSettings 在管理员保存设置后调用，让缓存立即失效。
+func (w *Web) invalidateSettings() { w.settingsCache.Store(nil) }
+
 // ---------- Host 调度 ----------
 
 // ServeHTTP 是所有请求的入口：面板、子域名站点、自定义域名、域名验证。
 func (w *Web) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	host := hostOnly(r.Host)
-	st, err := w.st.GetSettings()
+	st, err := w.settings()
 	if err != nil {
 		log.Printf("[web] 读取设置失败: %v", err)
 		http.Error(rw, "internal error", http.StatusInternalServerError)
@@ -73,7 +104,14 @@ func (w *Web) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 	if d, _ := w.st.GetDomainByHost(host); d != nil {
 		if d.Status == "active" {
-			w.serveSite(rw, r, d.ProjectID, store.StatusPublished)
+			// 自定义域名同样受项目状态约束：曾经这里硬编码 published，
+			// 导致「下架 / 待审核 / 驳回」的站点只要绑过域名就照常对外服务。
+			p, err := w.st.GetProject(d.ProjectID)
+			if err != nil || p == nil {
+				serveUnknownHost(rw)
+				return
+			}
+			w.serveSite(rw, r, p.ID, p.Status)
 			return
 		}
 		w.serveDomainVerify(rw, r, d, st)
@@ -290,7 +328,11 @@ func (w *Web) buildPanelMux() (http.Handler, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	mux.Handle("GET /static/{path...}", http.StripPrefix("/static/", http.FileServer(http.FS(staticSub))))
+	// 静态资源只服务具名文件：http.FileServer 对目录会输出文件清单，
+	// 这里显式拒绝以 / 结尾的请求，不做目录列表。
+	mux.Handle("GET /static/{path...}", http.StripPrefix("/static/", noDirList(http.FileServer(http.FS(staticSub)))))
+	// 健康检查：无需认证，供容器 / K8s 探针使用。
+	mux.HandleFunc("GET /healthz", w.healthz)
 
 	// 认证与账号
 	mux.HandleFunc("GET /login", w.loginPage)
@@ -357,7 +399,32 @@ func (w *Web) buildPanelMux() (http.Handler, error) {
 	handler = w.sessionLoader(handler)
 	handler = w.recoverer(handler)
 	handler = w.logger(handler)
+	handler = w.securityHeaders(handler)
 	return handler, nil
+}
+
+// healthz 健康检查：确认进程在服务且数据库可读。
+func (w *Web) healthz(rw http.ResponseWriter, r *http.Request) {
+	if err := w.st.Ping(); err != nil {
+		log.Printf("[web] 健康检查失败: %v", err)
+		http.Error(rw, "db unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	rw.Header().Set("Cache-Control", "no-store")
+	rw.Write([]byte("ok\n"))
+}
+
+// noDirList 包一层 http.FileServer，把目录请求变成 404。
+// 注意 StripPrefix 之后 /static/ 的路径是空串，同样属于目录请求。
+func noDirList(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		if p := r.URL.Path; p == "" || p == "." || strings.HasSuffix(p, "/") {
+			http.NotFound(rw, r)
+			return
+		}
+		next.ServeHTTP(rw, r)
+	})
 }
 
 // previewHandler 预览项目站点（面板同源，任何状态都可看，用于审核）。
@@ -413,8 +480,13 @@ func wErr(rw http.ResponseWriter, msg string, code int) {
 }
 
 // safeNext 校验登录后的跳转地址，只允许站内路径。
+// 反斜杠必须拒绝：浏览器会把 "\" 归一化为 "/"，`/\evil.com` 会变成
+// 协议相对地址 `//evil.com`，形成开放重定向。
 func safeNext(s string) string {
 	if s == "" || !strings.HasPrefix(s, "/") || strings.HasPrefix(s, "//") {
+		return "/"
+	}
+	if strings.ContainsAny(s, "\\") {
 		return "/"
 	}
 	if u, err := url.Parse(s); err != nil || u.Host != "" {

@@ -77,6 +77,13 @@ func (w *Web) reviewAction(rw http.ResponseWriter, r *http.Request) {
 		http.Redirect(rw, r, "/review/"+strconv.FormatInt(p.ID, 10), http.StatusSeeOther)
 	}
 
+	// 职责分离：审核员不能给自己创建的项目过审 / 驳回。
+	// 管理员不受限（其本身已能通过「发布 / 下架」直接处置任意项目）。
+	if p.OwnerID == u.ID && !u.IsAdmin() && (action == "approve" || action == "reject") {
+		w.errorPage(rw, r, http.StatusForbidden, "不能审核自己创建的项目，请让其他审核员处理。")
+		return
+	}
+
 	switch action {
 	case "approve":
 		if p.Status != store.StatusPending {

@@ -46,6 +46,18 @@ func (w *Web) updateProjectSize(p *store.Project) {
 	_ = files
 }
 
+// ensureMutable 拒绝对「已下架」项目的任何内容变更。
+// 下架是管理员的处置动作，不能被所有者用一次上传 / 编辑就覆盖掉；
+// 要恢复必须先由管理员在审核页执行「发布」。
+func (w *Web) ensureMutable(rw http.ResponseWriter, r *http.Request, p *store.Project) bool {
+	if p.Status == store.StatusSuspended {
+		w.errorPage(rw, r, http.StatusForbidden,
+			"该项目已被管理员下架，无法修改内容；如需恢复请联系管理员。")
+		return false
+	}
+	return true
+}
+
 // contentChanged 内容变更后统一处理：更新大小，并在审核开启时把已发布项目退回待审核。
 func (w *Web) contentChanged(p *store.Project, st *store.Settings) {
 	w.updateProjectSize(p)
@@ -268,7 +280,10 @@ func (w *Web) projectUpload(rw http.ResponseWriter, r *http.Request) {
 		w.errorPage(rw, r, http.StatusForbidden, "只有项目所有者或管理员可以上传内容")
 		return
 	}
-	st, err := w.st.GetSettings()
+	if !w.ensureMutable(rw, r, p) {
+		return
+	}
+	st, err := w.settings()
 	if err != nil {
 		w.errorPage(rw, r, http.StatusInternalServerError, "服务器错误")
 		return

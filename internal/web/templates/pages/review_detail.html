@@ -17,8 +17,8 @@
 
 <div class="card">
   <h3>站点预览</h3>
-  <p class="help">下方为内嵌预览，也可 <a href="/preview/{{.Data.Project.ID}}/" target="_blank">在新窗口打开</a>。</p>
-  <iframe class="preview" src="/preview/{{.Data.Project.ID}}/" sandbox="allow-same-origin allow-scripts allow-forms"></iframe>
+  <p class="help">下方为内嵌预览，也可 <a href="/preview/{{.Data.Project.ID}}/" target="_blank" rel="noopener noreferrer">在新窗口打开</a>。预览内容来自用户上传，已在沙箱源中运行（无法访问面板数据）。</p>
+  <iframe class="preview" src="/preview/{{.Data.Project.ID}}/" sandbox="allow-scripts allow-forms allow-popups allow-modals"></iframe>
 </div>
 
 <div class="card">

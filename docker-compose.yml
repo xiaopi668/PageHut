@@ -7,10 +7,25 @@ services:
     container_name: pagehut
     restart: unless-stopped
     ports:
-      - "8080:8080"        # 面板与站点（HTTP 模式，配合外部反代）
+      # 只绑定回环：面板请通过上游反代（Nginx / Caddy）暴露，
+      # 直接把 8080 开到公网会让面板与登录口令走明文 HTTP。
+      - "127.0.0.1:8080:8080"
       # - "80:80"           # TLS=auto 模式：ACME HTTP-01 质询 + 跳转
       # - "443:443"         # TLS=auto 模式：HTTPS
     volumes:
+      # bind mount 由 Docker 以 root 创建，容器内以 UID 1000 运行，
+      # 首次部署前请执行：mkdir -p data && chown -R 1000:1000 data
       - ./data:/data       # 数据库 + 站点文件 + 证书缓存
+    environment:
+      # 反代与 PageHut 同机时保持默认（信任回环）即可；
+      # 反代在别的机器/网段时填它的出口地址，否则限流与日志拿不到真实客户端 IP。
+      PAGEHUT_TRUSTED_PROXIES: "127.0.0.1/8,::1/128"
+      # TZ: Asia/Shanghai  # 容器默认 UTC
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     # 内置自动 HTTPS（需 80/443 直达本机，且已在管理后台配置好域名）：
     # command: ["-data", "/data", "-tls", "auto", "-http", ":80", "-https", ":443", "-acme-email", "you@example.com"]

@@ -65,10 +65,19 @@ func RandPassword(n int) string { return randCode(n) }
 const codeAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 func randCode(n int) string {
-	b := randBytes(n)
-	out := make([]byte, n)
-	for i, c := range b {
-		out[i] = codeAlphabet[int(c)%len(codeAlphabet)]
+	// 直接取模会带来偏置（256 % 31 != 0），这里丢弃落在偏置区间的字节重取。
+	limit := 256 - (256 % len(codeAlphabet))
+	out := make([]byte, 0, n)
+	for len(out) < n {
+		for _, c := range randBytes(n) {
+			if int(c) >= limit {
+				continue
+			}
+			out = append(out, codeAlphabet[int(c)%len(codeAlphabet)])
+			if len(out) == n {
+				break
+			}
+		}
 	}
 	return string(out)
 }

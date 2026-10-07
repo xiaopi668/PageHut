@@ -173,26 +173,33 @@ func (s *Storage) ExtractZip(id int64, r io.Reader, maxTotal int64) (int, int64,
 	}
 
 	pdir := s.Dir(id)
-	if err := os.MkdirAll(pdir, 0o755); err != nil {
+	if err := os.MkdirAll(s.Root, 0o755); err != nil {
 		return 0, 0, err
 	}
-	old, err := os.ReadDir(pdir)
-	if err != nil {
-		return 0, 0, err
-	}
-	for _, e := range old {
-		if err := os.RemoveAll(filepath.Join(pdir, e.Name())); err != nil {
+	// 整目录交换：旧内容整体挪到 .old-* 备份，再把解压结果整体 rename 到项目目录。
+	// 两次 rename 都发生在同一个文件系统内，中间不会出现「半新半旧」的项目目录；
+	// 旧实现是「先逐个删掉旧文件、再逐个 rename 新文件」，中途失败就两头落空。
+	backupRoot := ""
+	if _, err := os.Stat(pdir); err == nil {
+		backupRoot, err = os.MkdirTemp(s.Root, ".old-*")
+		if err != nil {
+			return 0, 0, err
+		}
+		if err := os.Rename(pdir, filepath.Join(backupRoot, "site")); err != nil {
+			os.RemoveAll(backupRoot)
 			return 0, 0, err
 		}
 	}
-	outEntries, err := os.ReadDir(outDir)
-	if err != nil {
+	if err := os.Rename(outDir, pdir); err != nil {
+		// 回滚：把备份放回原位
+		if backupRoot != "" {
+			os.Rename(filepath.Join(backupRoot, "site"), pdir)
+			os.RemoveAll(backupRoot)
+		}
 		return 0, 0, err
 	}
-	for _, e := range outEntries {
-		if err := os.Rename(filepath.Join(outDir, e.Name()), filepath.Join(pdir, e.Name())); err != nil {
-			return 0, 0, err
-		}
+	if backupRoot != "" {
+		os.RemoveAll(backupRoot)
 	}
 	return totalFiles, totalSize, nil
 }

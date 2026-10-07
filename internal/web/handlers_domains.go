@@ -132,7 +132,7 @@ func (w *Web) domainCheck(rw http.ResponseWriter, r *http.Request) {
 	}
 	// 方式二：域名 A 记录已指向本服务器，HTTP 令牌验证
 	if !verified {
-		client := &http.Client{Timeout: 5 * time.Second}
+		client := safeHTTPClient(5 * time.Second)
 		resp, err := client.Get("http://" + d.Domain + "/.well-known/pagehut-verify/" + d.VerifyToken)
 		if err == nil {
 			body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))

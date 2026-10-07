@@ -23,7 +23,9 @@ jobs:
           go-version-file: go.mod
 
       - name: 测试
-        run: go test ./...
+        run: |
+          go vet ./...
+          go test ./...
 
       - name: 交叉编译全平台二进制
         run: |
@@ -72,5 +74,8 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          # 镜像内版本号与 release 资产保持一致（否则容器日志里的版本永远是 dev）
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

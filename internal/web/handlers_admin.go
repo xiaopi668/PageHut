@@ -92,6 +92,7 @@ func (w *Web) adminSettingsSubmit(rw http.ResponseWriter, r *http.Request) {
 		w.errorPage(rw, r, http.StatusInternalServerError, "保存失败")
 		return
 	}
+	w.invalidateSettings() // 让 ServeHTTP / 渲染路径立即用上新设置
 	w.st.Audit(&u.ID, u.Username, "settings.update",
 		"mode="+mode+" review="+review+" maxMB="+strconv.FormatInt(maxMB, 10)+
 			" freeCount="+strconv.Itoa(freeCount)+" freeMB="+strconv.FormatInt(freeMB, 10)+
@@ -153,6 +154,10 @@ func (w *Web) adminUserNewSubmit(rw http.ResponseWriter, r *http.Request) {
 	}
 	if len(password) < 8 {
 		fail("密码至少 8 位。")
+		return
+	}
+	if len(password) > maxPasswordLen {
+		fail("密码过长：bcrypt 上限为 72 字节（中文约 24 个字）。")
 		return
 	}
 	if role != "user" && role != "reviewer" && role != "admin" {
@@ -266,6 +271,10 @@ func (w *Web) adminUserSave(rw http.ResponseWriter, r *http.Request) {
 	if pw := r.FormValue("password"); pw != "" {
 		if len(pw) < 8 {
 			w.errorPage(rw, r, http.StatusBadRequest, "新密码至少 8 位（其他修改已保存）。")
+			return
+		}
+		if len(pw) > maxPasswordLen {
+			w.errorPage(rw, r, http.StatusBadRequest, "新密码过长：bcrypt 上限为 72 字节（其他修改已保存）。")
 			return
 		}
 		hash, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)

@@ -114,8 +114,10 @@ func Open(dataDir string) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("打开数据库失败: %w", err)
 	}
-	// SQLite 写入是串行的，单连接即可避免 SQLITE_BUSY，该量级完全够用。
-	d.SetMaxOpenConns(1)
+	// WAL 允许「多读 + 单写」并发：给读请求留出连接，避免静态站点请求
+	// 全部排队在同一个连接上。写冲突由 busy_timeout(10000) 兜底重试。
+	d.SetMaxOpenConns(8)
+	d.SetMaxIdleConns(8)
 	if err := d.Ping(); err != nil {
 		d.Close()
 		return nil, fmt.Errorf("连接数据库失败: %w", err)

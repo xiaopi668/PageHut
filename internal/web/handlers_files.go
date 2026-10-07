@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"path"
 	"strconv"
 	"strings"
@@ -12,6 +13,12 @@ import (
 	"pagehut/internal/storage"
 	"pagehut/internal/store"
 )
+
+// filesURL 拼接文件管理页地址：目录名 / 文件名可能含空格、&、# 等字符，
+// 必须转义后再放进 Location，否则会被解析成额外的查询参数。
+func filesURL(projectID int64, dir string) string {
+	return "/projects/" + strconv.FormatInt(projectID, 10) + "/files?dir=" + url.QueryEscape(dir)
+}
 
 // sanitizeName 清理用户提供的文件/目录名。
 func sanitizeName(name string) string {
@@ -97,7 +104,7 @@ func (w *Web) fileEditPage(rw http.ResponseWriter, r *http.Request) {
 	}
 	if !sitefs.IsTextFile(fp) {
 		flash(rw, r, "该文件类型不支持在线编辑，可下载后本地编辑。")
-		http.Redirect(rw, r, "/projects/"+strconv.FormatInt(p.ID, 10)+"/files?dir="+parentDir(fp), http.StatusSeeOther)
+		http.Redirect(rw, r, filesURL(p.ID, parentDir(fp)), http.StatusSeeOther)
 		return
 	}
 	content, err := w.disk.ReadFile(p.ID, fp)
@@ -123,13 +130,16 @@ func (w *Web) fileSave(rw http.ResponseWriter, r *http.Request) {
 		w.errorPage(rw, r, http.StatusForbidden, "没有权限修改该项目")
 		return
 	}
+	if !w.ensureMutable(rw, r, p) {
+		return
+	}
 	fp := strings.TrimPrefix(r.FormValue("path"), "/")
 	content := r.FormValue("content")
 	if fp == "" {
 		w.errorPage(rw, r, http.StatusBadRequest, "缺少文件路径")
 		return
 	}
-	st, _ := w.st.GetSettings()
+	st, _ := w.settings()
 	_, sizeLimit := w.quotaFor(u, st)
 
 	oldSize := int64(0)
@@ -159,11 +169,14 @@ func (w *Web) fileUpload(rw http.ResponseWriter, r *http.Request) {
 		w.errorPage(rw, r, http.StatusForbidden, "没有权限修改该项目")
 		return
 	}
+	if !w.ensureMutable(rw, r, p) {
+		return
+	}
 	dir := strings.TrimPrefix(r.FormValue("dir"), "/")
 	if dir == "" {
 		dir = "."
 	}
-	st, _ := w.st.GetSettings()
+	st, _ := w.settings()
 	_, sizeLimit := w.quotaFor(u, st)
 	remaining := sizeLimit - p.Size
 	if remaining <= 0 {
@@ -201,7 +214,7 @@ func (w *Web) fileUpload(rw http.ResponseWriter, r *http.Request) {
 	}
 	w.contentChanged(p, st)
 	flash(rw, r, "文件已上传。")
-	http.Redirect(rw, r, "/projects/"+strconv.FormatInt(p.ID, 10)+"/files?dir="+dir, http.StatusSeeOther)
+	http.Redirect(rw, r, filesURL(p.ID, dir), http.StatusSeeOther)
 }
 
 // fileMkdir 新建目录。
@@ -212,6 +225,9 @@ func (w *Web) fileMkdir(rw http.ResponseWriter, r *http.Request) {
 	}
 	if !canManageProject(u, p) {
 		w.errorPage(rw, r, http.StatusForbidden, "没有权限修改该项目")
+		return
+	}
+	if !w.ensureMutable(rw, r, p) {
 		return
 	}
 	dir := strings.TrimPrefix(r.FormValue("dir"), "/")
@@ -229,7 +245,7 @@ func (w *Web) fileMkdir(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	flash(rw, r, "目录已创建。")
-	http.Redirect(rw, r, "/projects/"+strconv.FormatInt(p.ID, 10)+"/files?dir="+rel, http.StatusSeeOther)
+	http.Redirect(rw, r, filesURL(p.ID, rel), http.StatusSeeOther)
 }
 
 // fileDelete 删除文件或目录。
@@ -240,6 +256,9 @@ func (w *Web) fileDelete(rw http.ResponseWriter, r *http.Request) {
 	}
 	if !canManageProject(u, p) {
 		w.errorPage(rw, r, http.StatusForbidden, "没有权限修改该项目")
+		return
+	}
+	if !w.ensureMutable(rw, r, p) {
 		return
 	}
 	dir := strings.TrimPrefix(r.FormValue("dir"), "/")
@@ -257,7 +276,7 @@ func (w *Web) fileDelete(rw http.ResponseWriter, r *http.Request) {
 	}
 	w.contentChanged(p, w.mustSettings())
 	flash(rw, r, "已删除。")
-	http.Redirect(rw, r, "/projects/"+strconv.FormatInt(p.ID, 10)+"/files?dir="+dir, http.StatusSeeOther)
+	http.Redirect(rw, r, filesURL(p.ID, dir), http.StatusSeeOther)
 }
 
 // fileDownload 下载项目内文件。

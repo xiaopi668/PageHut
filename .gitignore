@@ -4,4 +4,5 @@ dist/
 *.db-shm
 *.db-wal
 *.test
-pageport
+pagehut
+.env

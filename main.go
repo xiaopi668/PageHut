@@ -7,8 +7,13 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"golang.org/x/crypto/acme/autocert"
@@ -22,7 +27,7 @@ import (
 )
 
 // version 可由构建时注入：go build -ldflags "-X main.version=x.y.z"。
-var version = "0.1.0"
+var version = "0.1.1"
 
 func main() {
 	log.SetFlags(log.LstdFlags)
@@ -37,6 +42,12 @@ func main() {
 	}
 	st := store.New(d)
 	disk := storage.New(cfg.DataDir)
+	// 清理上次异常退出残留的解压 / 交换临时目录（不参与配额统计，会白占磁盘）。
+	if n, err := disk.CleanupTemp(); err != nil {
+		log.Printf("清理残留临时目录失败: %v", err)
+	} else if n > 0 {
+		log.Printf("已清理 %d 个残留临时目录", n)
+	}
 
 	seedAdmin(st)
 
@@ -47,6 +58,12 @@ func main() {
 
 	go sessionCleaner(st)
 
+	// 收到 SIGINT / SIGTERM 后优雅退出：排空在途请求，并关闭数据库
+	// 触发 WAL checkpoint（否则 -wal 会长期留着未合并的写入）。
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	var servers []*http.Server
 	if cfg.TLS == config.TLSAuto {
 		m := &autocert.Manager{
 			Prompt:     autocert.AcceptTOS,
@@ -54,36 +71,61 @@ func main() {
 			Cache:      autocert.DirCache(cfg.ACMECache),
 			HostPolicy: server.AutoCertHostPolicy,
 		}
-		httpsSrv := &http.Server{
-			Addr:              cfg.HTTPSAddr,
-			Handler:           server,
-			TLSConfig:         m.TLSConfig(),
-			ReadHeaderTimeout: 15 * time.Second,
-		}
+		httpsSrv := newServer(cfg.HTTPSAddr, server)
+		httpsSrv.TLSConfig = m.TLSConfig()
+		// ACME HTTP-01 质询 + 其余跳转 HTTPS
+		httpSrv := newServer(cfg.HTTPAddr, m.HTTPHandler(server))
+		servers = append(servers, httpsSrv, httpSrv)
 		go func() {
 			log.Printf("HTTPS 监听 %s（内置 ACME 自动签发）", cfg.HTTPSAddr)
-			if err := httpsSrv.ListenAndServeTLS("", ""); err != nil {
+			if err := httpsSrv.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				log.Fatalf("HTTPS 启动失败: %v", err)
 			}
 		}()
-		httpSrv := &http.Server{
-			Addr:              cfg.HTTPAddr,
-			Handler:           m.HTTPHandler(server), // ACME HTTP-01 质询 + 其余跳转 HTTPS
-			ReadHeaderTimeout: 15 * time.Second,
-		}
+		go func() {
+			if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Fatalf("HTTP 启动失败: %v", err)
+			}
+		}()
 		log.Printf("PageHut %s 已启动  TLS=auto  HTTP:%s(ACME/跳转) HTTPS:%s  数据目录:%s",
 			version, cfg.HTTPAddr, cfg.HTTPSAddr, cfg.DataDir)
-		log.Fatal(httpSrv.ListenAndServe())
+	} else {
+		httpSrv := newServer(cfg.HTTPAddr, server)
+		servers = append(servers, httpSrv)
+		go func() {
+			if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Fatalf("HTTP 启动失败: %v", err)
+			}
+		}()
+		log.Printf("PageHut %s 已启动  TLS=manual  HTTP:%s  数据目录:%s",
+			version, cfg.HTTPAddr, cfg.DataDir)
 	}
 
-	httpSrv := &http.Server{
-		Addr:              cfg.HTTPAddr,
-		Handler:           server,
-		ReadHeaderTimeout: 15 * time.Second,
+	<-ctx.Done()
+	log.Printf("收到退出信号，正在停止服务…")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	for _, s := range servers {
+		if err := s.Shutdown(shutdownCtx); err != nil {
+			log.Printf("关闭监听失败: %v", err)
+		}
 	}
-	log.Printf("PageHut %s 已启动  TLS=manual  HTTP:%s  数据目录:%s",
-		version, cfg.HTTPAddr, cfg.DataDir)
-	log.Fatal(httpSrv.ListenAndServe())
+	if err := d.Close(); err != nil {
+		log.Printf("关闭数据库失败: %v", err)
+	}
+	log.Printf("已安全退出")
+}
+
+// newServer 创建带基础超时的 HTTP 服务。
+// WriteTimeout 有意不设置：站点可能有大文件下载，硬截止会截断响应。
+func newServer(addr string, h http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: 15 * time.Second,
+		ReadTimeout:       15 * time.Minute, // 容纳 100MB 级 zip 上传
+		IdleTimeout:       2 * time.Minute,
+	}
 }
 
 // seedAdmin 首次启动时创建初始管理员，随机密码打印到日志。

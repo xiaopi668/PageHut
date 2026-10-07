@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # PageHut 端到端冒烟测试：从零启动服务并走通核心流程。
-# 依赖：curl、unzip（生成测试 zip 用 python3 亦可）
+# 依赖：curl、python3（生成测试 zip）
 set -euo pipefail
+
+# 固定到仓库根目录，保证从任何 CWD 调用都能 go build .
+cd "$(dirname "$0")/.."
 
 PORT="${PORT:-8099}"
 BASE="http://127.0.0.1:${PORT}"
@@ -24,13 +27,23 @@ echo "══ PageHut E2E (${WORK}) ══"
 go build -o "${WORK}/pagehut" . 2>/dev/null || (go build -o "${WORK}/pagehut" .)
 "${WORK}/pagehut" -data "${DATA}" -http ":${PORT}" > "${LOG}" 2>&1 &
 SRV_PID=$!
-trap 'kill ${SRV_PID} 2>/dev/null || true' EXIT
+cleanup() {
+  kill "${SRV_PID}" 2>/dev/null || true
+  wait "${SRV_PID}" 2>/dev/null || true
+  rm -rf "${WORK}"
+}
+trap cleanup EXIT
 for i in $(seq 1 50); do curl -s -o /dev/null "${BASE}/login" && break; sleep 0.2; done
 
 ADMIN_PW="$(grep -oP '初始管理员密码: \K\S+' "${LOG}" || true)"
 [[ -n "${ADMIN_PW}" ]] && pass "服务启动，初始管理员密码已生成" || fail "未找到初始管理员密码（服务可能未启动，见 ${LOG}）"
 
-csrf() { grep pp_csrf "$1" | awk '{print $7}' | tail -1; }
+# 取 CSRF 令牌：先 GET 一次面板页，让服务端把 cookie 同步成当前会话对应的
+# 令牌（已登录用户用的是「会话派生值」，只在响应里下发），再从 jar 读取。
+csrf() {
+  curl -s -b "$1" -c "$1" -o /dev/null "${BASE}/" || true
+  grep pp_csrf "$1" | awk '{print $7}' | tail -1
+}
 
 # 2. 管理员登录
 curl -s -c "${JAR_ADMIN}" -o /dev/null "${BASE}/login"
@@ -60,8 +73,8 @@ code=$(curl -s -b "${JAR_ADMIN}" -c "${JAR_ADMIN}" -o /dev/null -w '%{http_code}
   -d "_csrf=$(csrf ${JAR_ADMIN})&name=演示站点&slug=demo" "${BASE}/projects/new")
 [[ "$code" == 303 ]] && pass "创建项目" || fail "创建项目 (HTTP ${code})"
 
-# 找到项目 ID
-pid=$(curl -s -b "${JAR_ADMIN}" "${BASE}/" | grep -oP '/projects/\K[0-9]+' | head -1)
+# 找到项目 ID（grep 无匹配时不要让 pipefail 静默中止）
+pid=$(curl -s -b "${JAR_ADMIN}" "${BASE}/" | grep -oP '/projects/\K[0-9]+' | head -1 || true)
 [[ -n "${pid}" ]] && pass "项目出现在仪表盘 (id=${pid})" || fail "未找到项目"
 
 # 5. 打包并上传 zip（审核开启 → 应进入待审核）
@@ -131,7 +144,7 @@ with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as z:
     data = os.urandom(2 * 1024 * 1024)  # 2MB 随机数据（不可压缩）
     z.writestr('big.bin', data)
 EOF
-upid=$(curl -s -b "${JAR_USER}" "${BASE}/" | grep -oP '/projects/\K[0-9]+' | head -1)
+upid=$(curl -s -b "${JAR_USER}" "${BASE}/" | grep -oP '/projects/\K[0-9]+' | head -1 || true)
 code=$(curl -s -b "${JAR_USER}" -o "${WORK}/up_resp.html" -w '%{http_code}' \
   -F "_csrf=$(csrf ${JAR_USER})" -F "zip=@${BIG}" \
   "${BASE}/projects/${upid}/upload")
@@ -149,7 +162,7 @@ token=$(curl -s -b "${JAR_ADMIN}" "${BASE}/projects/${pid}/domains" | grep -oP '
 body=$(curl -s -H "Host: www.mydemo.cn" "${BASE}/.well-known/pagehut-verify/${token}")
 check "令牌验证成功" "验证成功" "$body"
 
-did=$(curl -s -b "${JAR_ADMIN}" "${BASE}/admin/domains" | grep -oP '/admin/domains/\K[0-9]+' | head -1)
+did=$(curl -s -b "${JAR_ADMIN}" "${BASE}/admin/domains" | grep -oP '/admin/domains/\K[0-9]+' | head -1 || true)
 code=$(curl -s -b "${JAR_ADMIN}" -o /dev/null -w '%{http_code}' \
   -d "_csrf=$(csrf ${JAR_ADMIN})&action=activate" "${BASE}/admin/domains/${did}")
 [[ "$code" == 303 ]] && pass "管理员开通域名" || fail "开通域名 (HTTP ${code})"
@@ -164,5 +177,44 @@ check "未托管域名提示页" "尚未托管" "$body"
 # 14. CSRF 防护：不带令牌的 POST 应 403
 code=$(curl -s -b "${JAR_ADMIN}" -o /dev/null -w '%{http_code}' -d "username=x&password=y" "${BASE}/login")
 [[ "$code" == 403 ]] && pass "CSRF 防护生效" || fail "CSRF 应 403（实际 ${code}）"
+
+# 15. 健康检查
+code=$(curl -s -o "${WORK}/health.txt" -w '%{http_code}' "${BASE}/healthz")
+[[ "$code" == 200 ]] && pass "健康检查 /healthz 可用" || fail "/healthz 应 200（实际 ${code}）"
+
+# 16. 面板安全响应头
+hdr=$(curl -s -D - -o /dev/null "${BASE}/login")
+check "面板带 X-Frame-Options: DENY" "X-Frame-Options: DENY" "$hdr"
+check "面板 CSP 禁止被嵌套" "frame-ancestors 'none'" "$hdr"
+
+# 17. 预览必须运行在 CSP sandbox（不透明源）里
+hdr=$(curl -s -D - -o /dev/null -b "${JAR_ADMIN}" "${BASE}/preview/${pid}/")
+check "预览响应带 CSP sandbox" "sandbox" "$hdr"
+[[ "$hdr" == *"allow-same-origin"* ]] && fail "预览 CSP 不应放行 allow-same-origin" || pass "预览未放行 allow-same-origin"
+
+# 18. 静态资源不做目录列表
+code=$(curl -s -o /dev/null -w '%{http_code}' "${BASE}/static/")
+[[ "$code" == 404 ]] && pass "静态目录不做列表（/static/ → 404）" || fail "/static/ 应 404（实际 ${code}）"
+
+# 19. 下架不可被覆盖：子域名与自定义域名都必须停止服务
+code=$(curl -s -b "${JAR_ADMIN}" -o /dev/null -w '%{http_code}' \
+  -d "_csrf=$(csrf ${JAR_ADMIN})&action=suspend&reason=e2e" "${BASE}/review/${pid}")
+[[ "$code" == 303 ]] && pass "管理员下架项目" || fail "下架应 303（实际 ${code}）"
+
+code=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: demo.sites.example.com" "${BASE}/index.html")
+[[ "$code" == 403 ]] && pass "下架后子域名不再服务" || fail "下架后子域名应 403（实际 ${code}）"
+code=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: www.mydemo.cn" "${BASE}/index.html")
+[[ "$code" == 403 ]] && pass "下架后自定义域名不再服务" || fail "下架后自定义域名应 403（实际 ${code}）"
+
+code=$(curl -s -b "${JAR_ADMIN}" -o /dev/null -w '%{http_code}' \
+  -F "_csrf=$(csrf ${JAR_ADMIN})" -F "zip=@${WORK}/site.zip" \
+  "${BASE}/projects/${pid}/upload" || true)
+[[ "$code" == 403 ]] && pass "下架项目拒绝重新上传" || fail "下架后上传应 403（实际 ${code}）"
+
+code=$(curl -s -b "${JAR_ADMIN}" -o /dev/null -w '%{http_code}' \
+  -d "_csrf=$(csrf ${JAR_ADMIN})&action=publish" "${BASE}/review/${pid}")
+[[ "$code" == 303 ]] && pass "管理员强制发布恢复" || fail "发布应 303（实际 ${code}）"
+body=$(curl -s -H "Host: demo.sites.example.com" "${BASE}/index.html")
+check "恢复后站点可访问" "Hello PageHut" "$body"
 
 echo "══ 全部通过 ══"

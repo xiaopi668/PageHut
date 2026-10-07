@@ -59,12 +59,13 @@ func TestNormalizeSlug(t *testing.T) {
 }
 
 func TestSafeNext(t *testing.T) {
-	for _, s := range []string{"/projects/1", "/"} {
+	for _, s := range []string{"/projects/1", "/", "/account?x=1"} {
 		if safeNext(s) != s {
 			t.Errorf("safeNext(%q) 应原样返回", s)
 		}
 	}
-	for _, s := range []string{"", "//evil.com", "http://evil.com"} {
+	// `/\evil.com` 会被浏览器归一化成 `//evil.com`，必须拒绝。
+	for _, s := range []string{"", "//evil.com", "http://evil.com", "/\\evil.com", "/a\\b", "\\\\evil.com"} {
 		if got := safeNext(s); got != "/" {
 			t.Errorf("safeNext(%q) = %q, 应回退 /", s, got)
 		}
