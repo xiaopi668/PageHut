@@ -46,8 +46,13 @@
 <div class="card" style="margin-top:1.2rem">
   <h3>验证方法</h3>
   <ol class="small">
+    {{if .Data.Target}}
     <li><b>CNAME 方式（推荐）：</b>为你的域名添加 CNAME 记录指向 <code>{{.Data.Target}}</code></li>
     <li><b>A 记录方式：</b>将域名 A 记录指向本服务器 IP</li>
+    {{else}}
+    <li><b>A 记录方式：</b>将域名 A 记录指向本服务器 IP</li>
+    <li class="muted">当前未配置「子域名后缀」，因此没有可用的 CNAME 目标；如需用 CNAME 方式，请先到「系统设置 → 域名」填写子域名后缀。</li>
+    {{end}}
     <li>解析生效后点击「立即检查」，或直接访问上方表格中的验证链接完成所有权验证</li>
   </ol>
 </div>

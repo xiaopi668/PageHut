@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -25,12 +26,18 @@ func (w *Web) projectDomainsPage(rw http.ResponseWriter, r *http.Request) {
 		w.errorPage(rw, r, http.StatusInternalServerError, "服务器错误")
 		return
 	}
+	// 只有配置了子域名后缀才有可用的 CNAME 目标；否则给用户一个
+	// "<slug>." 这种无法解析的地址，等于把人引到死路上。
+	target := ""
+	if st.SitesHost != "" {
+		target = p.Slug + "." + st.SitesHost
+	}
 	w.render(rw, r, http.StatusOK, "project_domains", "自定义域名", map[string]any{
 		"Project":   p,
 		"Domains":   domains,
 		"CanManage": canManageProject(u, p),
 		"SitesHost": st.SitesHost,
-		"Target":    p.Slug + "." + st.SitesHost,
+		"Target":    target,
 	})
 }
 
@@ -121,8 +128,10 @@ func (w *Web) domainCheck(rw http.ResponseWriter, r *http.Request) {
 
 	st := w.mustSettings()
 	verified := false
+	fetchErr := error(nil)
+	fetchStatus := 0
 
-	// 方式一：CNAME 指向 <slug>.<sites_host>
+	// 方式一：CNAME 指向 <slug>.<sites_host>（未配置子域名后缀时无此路径）
 	if st.SitesHost != "" {
 		if canonical, err := net.LookupCNAME(d.Domain); err == nil {
 			if strings.TrimSuffix(strings.ToLower(canonical), ".") == p.Slug+"."+st.SitesHost {
@@ -134,7 +143,10 @@ func (w *Web) domainCheck(rw http.ResponseWriter, r *http.Request) {
 	if !verified {
 		client := safeHTTPClient(5 * time.Second)
 		resp, err := client.Get("http://" + d.Domain + "/.well-known/pagehut-verify/" + d.VerifyToken)
-		if err == nil {
+		if err != nil {
+			fetchErr = err
+		} else {
+			fetchStatus = resp.StatusCode
 			body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK && strings.Contains(string(body), "验证成功") {
@@ -144,7 +156,20 @@ func (w *Web) domainCheck(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	if !verified {
-		fail("暂未检测到解析生效：请确认 CNAME/A 记录已生效后重试。")
+		// 把失败原因说清楚，否则用户只能看到一句「未检测到解析生效」，
+		// 不知道该改 DNS、该开端口，还是该先配子域名后缀。
+		switch {
+		case fetchErr != nil && errors.Is(fetchErr, errBlockedTarget):
+			fail("域名解析到回环 / 链路本地地址，服务端不会向内网发起验证请求；请让域名解析到服务器的公网地址，或改用 CNAME 方式。")
+		case fetchErr != nil:
+			fail("无法访问 http://" + d.Domain + "/ 的验证地址（连接失败或超时）；请确认解析已生效、80 端口可达。")
+		case fetchStatus != http.StatusOK:
+			fail("验证地址返回了 HTTP " + strconv.Itoa(fetchStatus) + "，未返回令牌内容；请确认该域名已指向本服务器。")
+		case st.SitesHost == "":
+			fail("未在该域名上读到验证令牌：请确认 A 记录已指向本服务器；如需用 CNAME 方式，请先在「系统设置 → 域名」配置子域名后缀。")
+		default:
+			fail("暂未检测到解析生效：请确认 CNAME/A 记录已生效后重试。")
+		}
 		return
 	}
 	if err := w.st.UpdateDomainStatus(d.ID, "verified", nil); err != nil {

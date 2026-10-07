@@ -157,6 +157,15 @@ code=$(curl -s -b "${JAR_ADMIN}" -c "${JAR_ADMIN}" -o /dev/null -w '%{http_code}
   "${BASE}/projects/${pid}/domains")
 [[ "$code" == 303 ]] && pass "提交自定义域名申请" || fail "域名申请 (HTTP ${code})"
 
+# 12.1 回归：域名页必须给出真实可用的 CNAME 目标（曾渲染成 "demo."）
+body=$(curl -s -b "${JAR_ADMIN}" "${BASE}/projects/${pid}/domains")
+check "域名页给出 CNAME 目标" "demo.sites.example.com" "$body"
+
+# 12.2 回归：文件管理器根目录（曾经 400 非法路径）
+code=$(curl -s -b "${JAR_ADMIN}" -o "${WORK}/files.html" -w '%{http_code}' "${BASE}/projects/${pid}/files")
+[[ "$code" == 200 ]] && pass "文件标签页可打开（根目录）" || fail "文件标签页应 200（实际 ${code}）"
+check "根目录列出站点文件" "index.html" "$(cat "${WORK}/files.html")"
+
 token=$(curl -s -b "${JAR_ADMIN}" "${BASE}/projects/${pid}/domains" | grep -oP 'pagehut-verify/\K[a-f0-9]+' | head -1 || true)
 [[ -n "${token}" ]] && pass "验证令牌已生成" || fail "未找到验证令牌"
 body=$(curl -s -H "Host: www.mydemo.cn" "${BASE}/.well-known/pagehut-verify/${token}")

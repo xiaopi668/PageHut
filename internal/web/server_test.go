@@ -589,3 +589,119 @@ func TestCSRFTokenSurvivesRestart(t *testing.T) {
 		t.Fatalf("重启后使用旧页面令牌退出应 303，实际 %d（即「无法退出登录」）", out.StatusCode)
 	}
 }
+
+// ---------- 回归：文件管理器根目录 ----------
+
+// TestFilesPageRoot 覆盖「点文件标签页显示 400」：界面上的根目录标记是 "."，
+// 而 Storage 用空串表示根目录、且 resolve 把 "." 判为非法路径段，
+// 少了这层转换，项目根目录永远打不开（只有 ?dir=子目录 才正常）。
+func TestFilesPageRoot(t *testing.T) {
+	env := newTestEnv(t)
+	admin := env.addUser("admin", "admin-pass-123", "admin")
+	p := env.addProject(admin, "demo")
+	if err := env.disk.WriteFile(p.ID, "index.html", []byte("hi")); err != nil {
+		t.Fatalf("写入文件失败: %v", err)
+	}
+	if err := env.disk.Mkdir(p.ID, "assets"); err != nil {
+		t.Fatalf("建目录失败: %v", err)
+	}
+
+	cl := newClient(t)
+	env.loginOK(cl, "admin", "admin-pass-123")
+	base := "/projects/" + itoa(p.ID) + "/files"
+
+	// 各种「根目录」写法都必须 200 并列出根目录内容
+	for _, path := range []string{base, base + "?dir=", base + "?dir=.", base + "?dir=/"} {
+		resp := env.get(cl, path)
+		page := body(t, resp)
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("%s 应 200，实际 %d", path, resp.StatusCode)
+		}
+		if !strings.Contains(page, "index.html") {
+			t.Errorf("%s 未列出根目录文件", path)
+		}
+	}
+	// 子目录（含多余斜杠）也应正常
+	for _, path := range []string{base + "?dir=assets", base + "?dir=assets/"} {
+		resp := env.get(cl, path)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("%s 应 200，实际 %d", path, resp.StatusCode)
+		}
+	}
+	// 越界路径仍必须被拒
+	for _, path := range []string{base + "?dir=..", base + "?dir=../etc", base + "?dir=a/../b"} {
+		resp := env.get(cl, path)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s 应 400，实际 %d", path, resp.StatusCode)
+		}
+	}
+}
+
+// ---------- 回归：域名页的 CNAME 目标 ----------
+
+// TestDomainPageTargetOnlyWithSitesHost：未配置「子域名后缀」时，页面曾把
+// CNAME 目标渲染成 "<slug>."（如 demo.），用户照做永远解析不到，表现为
+// 「无法绑定域名」。此时应当只给 A 记录方式并提示去配置后缀。
+func TestDomainPageTargetOnlyWithSitesHost(t *testing.T) {
+	env := newTestEnv(t)
+	admin := env.addUser("admin", "admin-pass-123", "admin")
+	p := env.addProject(admin, "demo")
+	// 「验证方法」卡片只在已有域名申请时渲染，所以先建一条
+	if err := env.st.CreateDomain(p.ID, "www.example.org", "tok"); err != nil {
+		t.Fatalf("创建域名失败: %v", err)
+	}
+	cl := newClient(t)
+	env.loginOK(cl, "admin", "admin-pass-123")
+	path := "/projects/" + itoa(p.ID) + "/domains"
+
+	page := body(t, env.get(cl, path))
+	if strings.Contains(page, "<code>demo.</code>") {
+		t.Error("未配置子域名后缀时不应给出 \"demo.\" 这种无法解析的 CNAME 目标")
+	}
+	if !strings.Contains(page, "子域名后缀") {
+		t.Error("应提示先配置子域名后缀才能使用 CNAME 方式")
+	}
+
+	if err := env.st.UpdateSettings(map[string]string{"sites_host": "sites.example.com"}); err != nil {
+		t.Fatalf("更新设置失败: %v", err)
+	}
+	env.web.invalidateSettings()
+	page2 := body(t, env.get(cl, path))
+	if !strings.Contains(page2, "demo.sites.example.com") {
+		t.Error("配置子域名后缀后应给出 <slug>.<sites_host> 作为 CNAME 目标")
+	}
+}
+
+// TestDomainCheckExplainsFailure：检查失败必须说明原因，而不是只丢一句
+// 「未检测到解析生效」。这里用一个永不解析的保留域名（RFC 2606）。
+func TestDomainCheckExplainsFailure(t *testing.T) {
+	env := newTestEnv(t)
+	admin := env.addUser("admin", "admin-pass-123", "admin")
+	p := env.addProject(admin, "demo")
+	if err := env.st.CreateDomain(p.ID, "example.invalid", "token123"); err != nil {
+		t.Fatalf("创建域名失败: %v", err)
+	}
+	d, err := env.st.GetDomainByHost("example.invalid")
+	if err != nil || d == nil {
+		t.Fatalf("读取域名失败: %v", err)
+	}
+
+	cl := newClient(t)
+	env.loginOK(cl, "admin", "admin-pass-123")
+	env.get(cl, "/projects/"+itoa(p.ID)+"/domains").Body.Close()
+	resp := env.post(cl, "/projects/"+itoa(p.ID)+"/domains/"+itoa(d.ID)+"/check",
+		url.Values{"_csrf": {env.cookie(cl, cookieCSRF)}})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("检查应 303，实际 %d", resp.StatusCode)
+	}
+	page := body(t, env.get(cl, "/projects/"+itoa(p.ID)+"/domains"))
+	if !strings.Contains(page, "无法访问") {
+		t.Error("域名无法解析时应提示「无法访问 …验证地址」，页面未包含该提示")
+	}
+	if after, _ := env.st.GetDomain(d.ID); after != nil && after.Status != "pending" {
+		t.Errorf("验证失败后状态应保持 pending，实际 %q", after.Status)
+	}
+}

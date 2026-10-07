@@ -57,11 +57,18 @@ func (w *Web) filesPage(rw http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	dir := strings.TrimPrefix(r.URL.Query().Get("dir"), "/")
+	// 空参数、"." 与多余的斜杠都表示项目根目录。
+	// 注意：Storage 用空串表示根目录，而 "." 会被 resolve 判为非法路径段，
+	// 所以界面上的根目录标记必须在这里转换，否则根目录会 400。
+	dir := strings.Trim(strings.TrimPrefix(r.URL.Query().Get("dir"), "/"), "/")
 	if dir == "" {
 		dir = "."
 	}
-	entries, err := w.disk.ListDir(p.ID, dir)
+	lookup := dir
+	if lookup == "." {
+		lookup = ""
+	}
+	entries, err := w.disk.ListDir(p.ID, lookup)
 	if err != nil {
 		if errors.Is(err, storage.ErrBadPath) {
 			w.errorPage(rw, r, http.StatusBadRequest, "非法路径")
