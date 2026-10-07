@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"sync/atomic"
 
@@ -38,6 +39,12 @@ type Web struct {
 	panel http.Handler
 
 	csrfKey []byte // CSRF 令牌派生密钥（持久化在数据目录，重启后保持不变）
+
+	// assetVersion 是静态资源的内容指纹，拼在 URL 后面（app.css?v=xxx）。
+	// 面板升级后 URL 变化，浏览器一定会重新拉取——否则旧 CSS 会被继续复用，
+	// 出现「新页面配旧样式」的错位（浏览器缓存里那份旧响应没有缓存头，
+	// 可能根本不会回来校验）。
+	assetVersion string
 
 	// settingsCache 缓存运行期设置。Host 调度与每个页面渲染都要读设置，
 	// 若每个请求都查一次库，静态站点热路径会被单条 SQL 串行化。
@@ -358,7 +365,9 @@ type pageData struct {
 	Unread   int64
 	Settings *store.Settings
 	Captcha  *captchaView
-	Data     any
+	// AssetVersion 静态资源指纹，模板里拼成 /static/app.css?v=xxx
+	AssetVersion string
+	Data         any
 }
 
 func (t *tplSets) render(rw http.ResponseWriter, name string, data *pageData) {
@@ -384,6 +393,12 @@ func (w *Web) buildPanelMux() (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 资源指纹：所有静态资源内容哈希的组合，模板里拼成 ?v=xxx
+	etags, err := staticETags(staticSub)
+	if err != nil {
+		return nil, err
+	}
+	w.assetVersion = assetVersionOf(etags)
 	mux.Handle("GET /static/{path...}", staticHandler)
 	// 健康检查：无需认证，供容器 / K8s 探针使用。
 	mux.HandleFunc("GET /healthz", w.healthz)
@@ -565,6 +580,21 @@ func newStaticHandler(staticSub fs.FS) (http.Handler, error) {
 		}
 		inner.ServeHTTP(rw, r)
 	}), nil
+}
+
+// assetVersionOf 把各资源的 ETag 汇总成一个短指纹，用于 URL 上的 ?v=。
+func assetVersionOf(etags map[string]string) string {
+	names := make([]string, 0, len(etags))
+	for name := range etags {
+		names = append(names, name)
+	}
+	sort.Strings(names) // 保证结果稳定，不依赖 map 迭代顺序
+	h := sha256.New()
+	for _, name := range names {
+		h.Write([]byte(name))
+		h.Write([]byte(etags[name]))
+	}
+	return hex.EncodeToString(h.Sum(nil)[:4])
 }
 
 // staticETags 为嵌入的静态资源计算内容 ETag（启动时算一次）。

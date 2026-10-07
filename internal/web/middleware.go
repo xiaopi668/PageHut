@@ -278,7 +278,9 @@ func (w *Web) render(rw http.ResponseWriter, r *http.Request, code int, tpl, tit
 		Settings: st,
 		// 按页面决定是否需要人机验证（登录/注册/绑定邮箱/重置密码）
 		Captcha: w.captchaViewFor(st, captchaActionFor(tpl, st)),
-		Data:    data,
+		// 静态资源指纹：升级后 URL 变化，浏览器不会复用旧 CSS
+		AssetVersion: w.assetVersion,
+		Data:         data,
 	}
 	rw.WriteHeader(code)
 	w.tpl.render(rw, tpl, pd)

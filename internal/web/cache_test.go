@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -45,5 +46,27 @@ func TestStaticAssetsAreCacheSafe(t *testing.T) {
 	defer page.Body.Close()
 	if cc := page.Header.Get("Cache-Control"); cc != "no-store" {
 		t.Errorf("面板页面 Cache-Control 应为 no-store，实际 %q", cc)
+	}
+}
+
+// TestAssetsAreVersioned 覆盖「升级后浏览器仍用旧 CSS」的根因：
+// 页面里的静态资源 URL 必须带内容指纹，URL 变化后浏览器无法复用旧缓存。
+func TestAssetsAreVersioned(t *testing.T) {
+	env := newTestEnv(t)
+	if env.web.assetVersion == "" {
+		t.Fatal("未计算静态资源指纹")
+	}
+	page := body(t, env.get(newClient(t), "/login"))
+	if !strings.Contains(page, "/static/app.css?v="+env.web.assetVersion) {
+		t.Errorf("app.css 未带资源指纹（应为 ?v=%s）", env.web.assetVersion)
+	}
+	if !strings.Contains(page, "?v="+env.web.assetVersion) {
+		t.Error("页面未使用资源指纹")
+	}
+	// 带查询串的静态资源仍可访问
+	resp := env.get(newClient(t), "/static/app.css?v="+env.web.assetVersion)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("带指纹的静态资源应 200，实际 %d", resp.StatusCode)
 	}
 }

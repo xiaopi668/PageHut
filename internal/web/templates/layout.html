@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{.Title}} · {{.Settings.SiteName}}</title>
-<link rel="icon" type="image/png" href="/static/favicon.png">
-<link rel="stylesheet" href="/static/app.css">
-{{if .Captcha}}<script src="/static/captcha.js" defer></script>{{end}}
+<link rel="icon" type="image/png" href="/static/favicon.png?v={{.AssetVersion}}">
+<link rel="stylesheet" href="/static/app.css?v={{.AssetVersion}}">
+{{if .Captcha}}<script src="/static/captcha.js?v={{.AssetVersion}}" defer></script>{{end}}
 </head>
 <body{{if not .User}} class="auth-body"{{end}}>
 {{if .User}}
