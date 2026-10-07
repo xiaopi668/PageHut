@@ -70,7 +70,7 @@ func (w *Web) contentChanged(p *store.Project, st *store.Settings) {
 
 var slugCleaner = regexp.MustCompile(`[^a-z0-9-]+`)
 
-// normalizeSlug 把用户输入整理成合法子域名前缀。
+// normalizeSlug 把用户输入整理成合法访问路径。
 func normalizeSlug(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	s = strings.ReplaceAll(s, "_", "-")
@@ -168,7 +168,7 @@ func (w *Web) projectNewSubmit(rw http.ResponseWriter, r *http.Request) {
 		autoSlug = true
 	}
 	if !validSlug(slug) {
-		newErr("子域名前缀只能包含小写字母、数字和短横线，且不能是保留字。")
+		newErr("访问路径只能包含小写字母、数字和短横线，且不能是保留字。")
 		return
 	}
 
@@ -186,7 +186,7 @@ func (w *Web) projectNewSubmit(rw http.ResponseWriter, r *http.Request) {
 	pid, err := w.st.CreateProject(u.ID, slug, name)
 	if err != nil {
 		if store.IsUniqueErr(err) {
-			newErr("该子域名前缀已被占用，请换一个。")
+			newErr("该访问路径已被占用，请换一个。")
 			return
 		}
 		log.Printf("[web] 创建项目失败: %v", err)
@@ -201,7 +201,7 @@ func (w *Web) projectNewSubmit(rw http.ResponseWriter, r *http.Request) {
 	}
 	w.st.Audit(&u.ID, u.Username, "project.create", slug)
 	if autoSlug {
-		flash(rw, r, "项目已创建，系统自动分配了子域名前缀 "+slug+"，可在项目设置中修改。")
+		flash(rw, r, "项目已创建，系统自动分配了访问路径 "+slug+"，可在项目设置中修改。")
 	} else {
 		flash(rw, r, "项目已创建，上传 zip 即可发布。")
 	}
@@ -347,12 +347,12 @@ func (w *Web) projectMeta(rw http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(r.FormValue("name"))
 	slug := normalizeSlug(r.FormValue("slug"))
 	if name == "" || slug == "" || !validSlug(slug) {
-		w.errorPage(rw, r, http.StatusBadRequest, "名称或子域名前缀不合法。")
+		w.errorPage(rw, r, http.StatusBadRequest, "名称或访问路径不合法。")
 		return
 	}
 	if err := w.st.UpdateProjectMeta(p.ID, name, slug); err != nil {
 		if store.IsUniqueErr(err) {
-			flash(rw, r, "该子域名前缀已被占用。")
+			flash(rw, r, "该访问路径已被占用。")
 		} else {
 			log.Printf("[web] 更新项目失败: %v", err)
 			flash(rw, r, "更新失败。")
@@ -379,7 +379,7 @@ func (w *Web) projectDelete(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.FormValue("confirm") != p.Slug {
-		w.errorPage(rw, r, http.StatusBadRequest, "请输入项目子域名前缀确认删除。")
+		w.errorPage(rw, r, http.StatusBadRequest, "请输入访问路径确认删除。")
 		return
 	}
 	if err := w.disk.Destroy(p.ID); err != nil {

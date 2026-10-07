@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE TABLE IF NOT EXISTS projects (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
 	owner_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-	slug          TEXT    NOT NULL UNIQUE,                -- 子域名前缀，全局唯一
+	slug          TEXT    NOT NULL UNIQUE,                -- 访问路径（站点域名/项目路径 的第一段），全局唯一
 	name          TEXT    NOT NULL,
 	status        TEXT    NOT NULL DEFAULT 'pending',     -- pending | published | rejected | suspended
 	size          INTEGER NOT NULL DEFAULT 0,             -- 当前内容总大小（字节）

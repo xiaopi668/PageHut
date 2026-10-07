@@ -83,7 +83,7 @@ func (w *Web) invalidateSettings() { w.settingsCache.Store(nil) }
 
 // ---------- Host 调度 ----------
 
-// ServeHTTP 是所有请求的入口：面板、子域名站点、自定义域名、域名验证。
+// ServeHTTP 是所有请求的入口：面板、站点域名下的项目路径、自定义域名、域名验证。
 func (w *Web) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	host := hostOnly(r.Host)
 	st, err := w.settings()
@@ -97,21 +97,15 @@ func (w *Web) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		w.panel.ServeHTTP(rw, r)
 		return
 	}
-	if st.SitesHost != "" && strings.HasSuffix(host, "."+st.SitesHost) {
-		slug := strings.TrimSuffix(host, "."+st.SitesHost)
-		w.serveBySlug(rw, r, slug)
+	// 站点域名：以「站点域名/项目路径/...」的形式提供站点
+	if st.SitesHost != "" && host == st.SitesHost {
+		w.serveSitePath(rw, r, nil)
 		return
 	}
 	if d, _ := w.st.GetDomainByHost(host); d != nil {
 		if d.Status == "active" {
-			// 自定义域名同样受项目状态约束：曾经这里硬编码 published，
-			// 导致「下架 / 待审核 / 驳回」的站点只要绑过域名就照常对外服务。
-			p, err := w.st.GetProject(d.ProjectID)
-			if err != nil || p == nil {
-				serveUnknownHost(rw)
-				return
-			}
-			w.serveSite(rw, r, p.ID, p.Status)
+			// 自定义域名：根路径指向绑定的项目，/<项目路径>/ 指向同一所有者的项目
+			w.serveSitePath(rw, r, d)
 			return
 		}
 		w.serveDomainVerify(rw, r, d, st)
@@ -124,9 +118,6 @@ func (w *Web) isPanelHost(host string, st *store.Settings) bool {
 	if st.PanelHost != "" && host == st.PanelHost {
 		return true
 	}
-	if st.SitesHost != "" && host == st.SitesHost {
-		return true
-	}
 	// 直接用 IP（或 localhost 开发环境）访问时进面板
 	if net.ParseIP(host) != nil || host == "localhost" {
 		return true
@@ -134,18 +125,69 @@ func (w *Web) isPanelHost(host string, st *store.Settings) bool {
 	return false
 }
 
-func (w *Web) serveBySlug(rw http.ResponseWriter, r *http.Request, slug string) {
-	p, err := w.st.GetProjectBySlug(slug)
-	if err != nil {
-		log.Printf("[web] 查询项目失败: %v", err)
-		http.Error(rw, "internal error", http.StatusInternalServerError)
+// serveSitePath 以「域名/项目路径/...」的形式提供站点文件。
+//
+// d 为 nil 表示站点域名：该域名下任何已发布项目都可通过 /<项目路径>/ 访问。
+// d 非 nil 表示自定义域名：根路径指向该域名绑定的项目（兼容原有的
+// 「域名即站点」用法），其余路径只允许该域名所属用户自己的项目——
+// 否则一个用户的域名会把别人的站点也挂出去。
+func (w *Web) serveSitePath(rw http.ResponseWriter, r *http.Request, d *store.Domain) {
+	rest := strings.TrimPrefix(r.URL.Path, "/")
+	if rest == "" {
+		if d == nil {
+			// 站点域名根路径没有默认项目
+			serveUnknownHost(rw)
+			return
+		}
+		p, err := w.st.GetProject(d.ProjectID)
+		if err != nil || p == nil {
+			serveUnknownHost(rw)
+			return
+		}
+		w.serveSite(rw, r, p.ID, p.Status)
 		return
 	}
-	if p == nil {
-		serveUnknownHost(rw)
-		return
+
+	slug, sub, found := strings.Cut(rest, "/")
+	// 路径形式：/<项目路径>/...（首段命中项目才按路径解析）
+	if slug != "" {
+		p, err := w.st.GetProjectBySlug(slug)
+		if err != nil {
+			log.Printf("[web] 查询项目失败: %v", err)
+			http.Error(rw, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if p != nil && (d == nil || p.OwnerID == d.OwnerID) {
+			if !found {
+				// /<项目路径> → /<项目路径>/：少了这个斜杠，站点里的相对
+				// 链接会以上一级目录为基准，页面资源会错位。
+				http.Redirect(rw, r, "/"+slug+"/", http.StatusMovedPermanently)
+				return
+			}
+			// 把路径前缀剥掉后再交给静态文件服务
+			r2 := r.Clone(r.Context())
+			r2.URL.Path = "/" + sub
+			r2.URL.RawPath = ""
+			w.serveSite(rw, r2, p.ID, p.Status)
+			return
+		}
 	}
-	w.serveSite(rw, r, p.ID, p.Status)
+
+	// 自定义域名上的其它路径回退到「域名即站点」：站点里的绝对路径
+	// （/assets/x.css）必须继续可用，否则绑定域名后整站样式/脚本全 404。
+	if d != nil {
+		p, err := w.st.GetProject(d.ProjectID)
+		if err != nil {
+			log.Printf("[web] 查询项目失败: %v", err)
+			http.Error(rw, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if p != nil {
+			w.serveSite(rw, r, p.ID, p.Status)
+			return
+		}
+	}
+	serveUnknownHost(rw)
 }
 
 // serveSite 按项目状态提供站点内容；未发布的站点返回占位页。
@@ -158,7 +200,9 @@ func (w *Web) serveSite(rw http.ResponseWriter, r *http.Request, projectID int64
 }
 
 // AutoCertHostPolicy 供 autocert 判断哪些 Host 可自动签发证书：
-// 面板域名、站点子域名以及已生效的自定义域名。
+// 面板域名、站点域名以及已生效的自定义域名。
+// 注意这里只放行站点域名本身（不再放行任意子域名）：站点已改为路径形式，
+// 放行整个子域命名空间等于给「按需签发」开了口子。
 func (w *Web) AutoCertHostPolicy(_ context.Context, host string) error {
 	st, err := w.st.GetSettings()
 	if err != nil {
@@ -167,7 +211,7 @@ func (w *Web) AutoCertHostPolicy(_ context.Context, host string) error {
 	if w.isPanelHost(host, st) {
 		return nil
 	}
-	if st.SitesHost != "" && (host == st.SitesHost || strings.HasSuffix(host, "."+st.SitesHost)) {
+	if st.SitesHost != "" && host == st.SitesHost {
 		return nil
 	}
 	if d, _ := w.st.GetDomainByHost(host); d != nil && d.Status == "active" {
@@ -188,7 +232,7 @@ const unknownHostHTML = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>404 · PageHut</title><style>body{font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;background:radial-gradient(46rem 32rem at 12% -8%,rgba(34,211,238,.14),transparent 62%),radial-gradient(50rem 36rem at 90% -4%,rgba(139,92,246,.12),transparent 62%),#07070a;color:#a7a7b3}
 .box{text-align:center;padding:2rem}h1{font-size:1.5rem;color:#f2f2f6}code{background:#e5e7eb;padding:.1rem .35rem;border-radius:4px;font-size:.9em}</style></head>
-<body><div class="box"><h1>404</h1><p>该域名尚未托管任何站点，或站点不存在。</p><p><small>Powered by PageHut</small></p></div></body></html>`
+<body><div class="box"><h1>404</h1><p>该地址没有对应的站点（域名未托管，或项目路径不存在）。</p><p><small>Powered by PageHut</small></p></div></body></html>`
 
 func servePlaceholder(rw http.ResponseWriter, status string) {
 	msg := "该站点正在等待审核，暂时无法访问。"

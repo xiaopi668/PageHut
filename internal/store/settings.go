@@ -15,8 +15,8 @@ type Settings struct {
 	MaxProjectSize   int64  // 全站单个项目大小硬上限（字节）
 	FreeProjectCount int    // 免费用户项目数量上限
 	FreeProjectSize  int64  // 免费用户单个项目大小上限（字节）
-	SitesHost        string // 子域名后缀，如 sites.example.com；为空表示未启用子域名
-	PanelHost        string // 面板域名；为空表示“未匹配到站点的一律进面板”
+	SitesHost        string // 站点域名，如 sites.example.com；项目以 <站点域名>/<项目路径>/ 访问，为空表示未启用
+	PanelHost        string // 面板域名；必须与站点域名不同，为空时只有 IP / localhost 能进面板
 }
 
 const (

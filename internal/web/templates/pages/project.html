@@ -20,9 +20,9 @@
 <div class="card">
   <h3>访问地址</h3>
   {{if .Data.SitesHost}}
-  <p><code>{{.Data.Project.Slug}}.{{.Data.SitesHost}}</code>　<span class="muted small">（需管理员将该子域名后缀解析到本服务器）</span></p>
+  <p><code>{{.Data.SitesHost}}/{{.Data.Project.Slug}}/</code>　<span class="muted small">（需管理员把站点域名解析到本服务器）</span></p>
   {{else}}
-  <p class="muted">管理员尚未启用子域名访问，当前可通过 <a href="/preview/{{.Data.Project.ID}}/">预览链接</a> 查看。</p>
+  <p class="muted">管理员尚未配置站点域名，当前可通过 <a href="/preview/{{.Data.Project.ID}}/">预览链接</a> 查看。</p>
   {{end}}
   {{if .Data.ReviewOn}}<p class="muted small">未发布状态下，仅你、审核员和管理员可通过预览链接查看。</p>{{end}}
 </div>
@@ -46,7 +46,7 @@
     <input type="hidden" name="_csrf" value="{{.CSRF}}">
     <div class="inline-form">
       <label>名称<input name="name" value="{{.Data.Project.Name}}" required></label>
-      <label>子域名前缀<input name="slug" value="{{.Data.Project.Slug}}" required></label>
+      <label>访问路径<input name="slug" value="{{.Data.Project.Slug}}" required></label>
       <button class="btn" type="submit">保存</button>
     </div>
   </form>
@@ -54,7 +54,7 @@
 
 <div class="card danger-zone">
   <h3>危险操作</h3>
-  <p class="help">删除项目将同时删除全部站点文件与域名绑定，不可恢复。请输入子域名前缀 <code>{{.Data.Project.Slug}}</code> 确认。</p>
+  <p class="help">删除项目将同时删除全部站点文件与域名绑定，不可恢复。请输入访问路径 <code>{{.Data.Project.Slug}}</code> 确认。</p>
   <form method="post" action="/projects/{{.Data.Project.ID}}/delete" class="inline-form" onsubmit="return confirm('真的要删除该项目吗？此操作不可恢复！')">
     <input type="hidden" name="_csrf" value="{{.CSRF}}">
     <label>确认输入<input name="confirm" required placeholder="{{.Data.Project.Slug}}"></label>

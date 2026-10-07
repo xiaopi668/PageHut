@@ -658,10 +658,10 @@ func TestDomainPageTargetOnlyWithSitesHost(t *testing.T) {
 
 	page := body(t, env.get(cl, path))
 	if strings.Contains(page, "<code>demo.</code>") {
-		t.Error("未配置子域名后缀时不应给出 \"demo.\" 这种无法解析的 CNAME 目标")
+		t.Error("未配置站点域名时不应给出 \"demo.\" 这种无法解析的 CNAME 目标")
 	}
-	if !strings.Contains(page, "子域名后缀") {
-		t.Error("应提示先配置子域名后缀才能使用 CNAME 方式")
+	if !strings.Contains(page, "站点域名") {
+		t.Error("应提示先配置站点域名才能使用 CNAME 方式")
 	}
 
 	if err := env.st.UpdateSettings(map[string]string{"sites_host": "sites.example.com"}); err != nil {
@@ -669,8 +669,11 @@ func TestDomainPageTargetOnlyWithSitesHost(t *testing.T) {
 	}
 	env.web.invalidateSettings()
 	page2 := body(t, env.get(cl, path))
-	if !strings.Contains(page2, "demo.sites.example.com") {
-		t.Error("配置子域名后缀后应给出 <slug>.<sites_host> 作为 CNAME 目标")
+	if !strings.Contains(page2, "<code>sites.example.com</code>") {
+		t.Error("配置站点域名后应把站点域名本身作为 CNAME 目标")
+	}
+	if strings.Contains(page2, "demo.sites.example.com") {
+		t.Error("站点已改为路径形式，不应再出现子域名形式的 CNAME 目标")
 	}
 }
 
@@ -703,5 +706,146 @@ func TestDomainCheckExplainsFailure(t *testing.T) {
 	}
 	if after, _ := env.st.GetDomain(d.ID); after != nil && after.Status != "pending" {
 		t.Errorf("验证失败后状态应保持 pending，实际 %q", after.Status)
+	}
+}
+
+// ---------- 路径形式站点：<站点域名>/<项目路径>/ ----------
+
+type hostResp struct {
+	code     int
+	body     string
+	location string
+}
+
+// hostGet 直接以指定 Host 打根处理器，绕过 httptest 的监听地址。
+func hostGet(t *testing.T, env *testEnv, host, path string) hostResp {
+	t.Helper()
+	req := httptest.NewRequest("GET", "http://"+host+path, nil)
+	req.Host = host
+	rec := httptest.NewRecorder()
+	env.web.ServeHTTP(rec, req)
+	return hostResp{code: rec.Code, body: rec.Body.String(), location: rec.Header().Get("Location")}
+}
+
+func (e *testEnv) publish(p *store.Project, by *store.User) {
+	e.t.Helper()
+	if err := e.st.UpdateProjectStatus(p.ID, store.StatusPublished, "", &by.ID); err != nil {
+		e.t.Fatalf("发布项目失败: %v", err)
+	}
+}
+
+func TestSitesHostServesProjectsByPath(t *testing.T) {
+	env := newTestEnv(t)
+	admin := env.addUser("admin", "admin-pass-123", "admin")
+	p := env.addProject(admin, "demo")
+	env.publish(p, admin)
+	if err := env.disk.WriteFile(p.ID, "index.html", []byte("HELLO-PATH")); err != nil {
+		t.Fatalf("写入站点文件失败: %v", err)
+	}
+	if err := env.disk.WriteFile(p.ID, "assets/a.css", []byte("body{}")); err != nil {
+		t.Fatalf("写入静态资源失败: %v", err)
+	}
+	if err := env.st.UpdateSettings(map[string]string{
+		"sites_host": "sites.example.com", "panel_host": "dash.example.com",
+	}); err != nil {
+		t.Fatalf("更新设置失败: %v", err)
+	}
+	env.web.invalidateSettings()
+
+	// 站点文件按路径提供
+	if got := hostGet(t, env, "sites.example.com", "/demo/index.html"); got.code != http.StatusOK || !strings.Contains(got.body, "HELLO-PATH") {
+		t.Errorf("/demo/index.html 应 200 且返回站点内容，实际 %d", got.code)
+	}
+	if got := hostGet(t, env, "sites.example.com", "/demo/"); got.code != http.StatusOK || !strings.Contains(got.body, "HELLO-PATH") {
+		t.Errorf("/demo/ 应返回 index.html，实际 %d", got.code)
+	}
+	if got := hostGet(t, env, "sites.example.com", "/demo/assets/a.css"); got.code != http.StatusOK || !strings.Contains(got.body, "body{}") {
+		t.Errorf("/demo/assets/a.css 异常，实际 %d", got.code)
+	}
+	// 缺尾斜杠必须跳转，否则站点内相对链接的基准会错
+	if got := hostGet(t, env, "sites.example.com", "/demo"); got.code != http.StatusMovedPermanently || got.location != "/demo/" {
+		t.Errorf("/demo 应 301 到 /demo/，实际 %d %q", got.code, got.location)
+	}
+	// 站点域名根路径与未知路径都 404
+	for _, path := range []string{"/", "/nope/", "/nope/index.html"} {
+		if got := hostGet(t, env, "sites.example.com", path); got.code != http.StatusNotFound {
+			t.Errorf("%s 应 404，实际 %d", path, got.code)
+		}
+	}
+	// 面板绝不能出现在站点域名上（否则用户站点与面板同源）
+	if got := hostGet(t, env, "sites.example.com", "/login"); got.code != http.StatusNotFound {
+		t.Errorf("站点域名上不应提供面板（/login 应 404），实际 %d", got.code)
+	}
+	// 未发布项目仍走占位页
+	pending := env.addProject(admin, "pending-one")
+	if got := hostGet(t, env, "sites.example.com", "/"+pending.Slug+"/index.html"); got.code != http.StatusForbidden {
+		t.Errorf("未发布项目应 403，实际 %d", got.code)
+	}
+}
+
+func TestCustomDomainServesOnlyOwnersProjects(t *testing.T) {
+	env := newTestEnv(t)
+	alice := env.addUser("alice", "alice-pass-123", "user")
+	bob := env.addUser("bob", "bob-pass-1234", "user")
+	pa := env.addProject(alice, "site-a")
+	pb := env.addProject(bob, "site-b")
+	for _, p := range []*store.Project{pa, pb} {
+		env.publish(p, alice)
+		if err := env.disk.WriteFile(p.ID, "index.html", []byte("CONTENT-"+p.Slug)); err != nil {
+			t.Fatalf("写入站点文件失败: %v", err)
+		}
+	}
+	if err := env.st.CreateDomain(pa.ID, "www.alice.org", "tok"); err != nil {
+		t.Fatalf("创建域名失败: %v", err)
+	}
+	d, err := env.st.GetDomainByHost("www.alice.org")
+	if err != nil || d == nil {
+		t.Fatalf("读取域名失败: %v", err)
+	}
+	if err := env.st.UpdateDomainStatus(d.ID, "active", &alice.ID); err != nil {
+		t.Fatalf("开通域名失败: %v", err)
+	}
+
+	// 根路径 → 域名绑定的项目
+	if got := hostGet(t, env, "www.alice.org", "/"); got.code != http.StatusOK || !strings.Contains(got.body, "CONTENT-site-a") {
+		t.Errorf("自定义域名根路径应指向绑定的项目，实际 %d", got.code)
+	}
+	// 自己的项目可按路径访问
+	if got := hostGet(t, env, "www.alice.org", "/site-a/index.html"); got.code != http.StatusOK || !strings.Contains(got.body, "CONTENT-site-a") {
+		t.Errorf("自定义域名下自己的项目应可访问，实际 %d", got.code)
+	}
+	// 别人的项目不得挂出
+	if got := hostGet(t, env, "www.alice.org", "/site-b/index.html"); got.code != http.StatusNotFound {
+		t.Errorf("自定义域名不应挂出他人项目，实际 %d", got.code)
+	}
+	// 站点里的绝对路径（/assets/...）必须回退到绑定项目，否则绑定域名后
+	// 整站样式与脚本都会 404
+	if err := env.disk.WriteFile(pa.ID, "assets/a.css", []byte("body{}")); err != nil {
+		t.Fatalf("写入静态资源失败: %v", err)
+	}
+	if got := hostGet(t, env, "www.alice.org", "/assets/a.css"); got.code != http.StatusOK || !strings.Contains(got.body, "body{}") {
+		t.Errorf("自定义域名下站点绝对路径应可用（回退到绑定项目），实际 %d", got.code)
+	}
+}
+
+func TestSitesHostMustDifferFromPanelHost(t *testing.T) {
+	env := newTestEnv(t)
+	env.addUser("admin", "admin-pass-123", "admin")
+	cl := newClient(t)
+	env.loginOK(cl, "admin", "admin-pass-123")
+	env.get(cl, "/admin/settings").Body.Close()
+
+	resp := env.post(cl, "/admin/settings", url.Values{
+		"site_name": {"PageHut"}, "registration_mode": {"closed"}, "review_enabled": {"1"},
+		"max_project_size_mb": {"100"}, "free_project_count": {"5"}, "free_project_size_mb": {"50"},
+		"sites_host": {"same.example.com"}, "panel_host": {"same.example.com"},
+		"_csrf": {env.cookie(cl, cookieCSRF)},
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("站点域名与面板域名相同应 400，实际 %d", resp.StatusCode)
+	}
+	if st, _ := env.st.GetSettings(); st.SitesHost != "" {
+		t.Errorf("非法设置不应落库，实际 sites_host=%q", st.SitesHost)
 	}
 }

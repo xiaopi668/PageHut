@@ -66,11 +66,17 @@ func (w *Web) adminSettingsSubmit(rw http.ResponseWriter, r *http.Request) {
 	sitesHost := parseHostInput(r.FormValue("sites_host"))
 	panelHost := parseHostInput(r.FormValue("panel_host"))
 	if sitesHost != "" && !validDomain(sitesHost) {
-		w.errorPage(rw, r, http.StatusBadRequest, "子域名后缀格式不正确。")
+		w.errorPage(rw, r, http.StatusBadRequest, "站点域名格式不正确。")
 		return
 	}
 	if panelHost != "" && !validDomain(panelHost) {
 		w.errorPage(rw, r, http.StatusBadRequest, "面板域名格式不正确。")
+		return
+	}
+	// 站点域名与面板域名必须分开：用户站点里跑的是上传的任意 JS，
+	// 一旦同源就能读取面板数据、以登录者身份调用面板接口。
+	if sitesHost != "" && sitesHost == panelHost {
+		w.errorPage(rw, r, http.StatusBadRequest, "站点域名不能与面板域名相同：否则用户站点会与面板同源，存在安全风险。")
 		return
 	}
 	if siteName == "" {

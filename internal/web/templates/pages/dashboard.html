@@ -25,7 +25,7 @@
   {{range .Data.Projects}}
   <tr>
     <td><a href="/projects/{{.ID}}"><b>{{.Name}}</b></a></td>
-    <td class="mono">{{if $.Data.SitesHost}}{{.Slug}}.{{$.Data.SitesHost}}{{else}}<span class="muted">未启用子域名（可预览）</span>{{end}}</td>
+    <td class="mono">{{if $.Data.SitesHost}}{{$.Data.SitesHost}}/{{.Slug}}/{{else}}<span class="muted">未启用站点域名（可预览）</span>{{end}}</td>
     <td><span class="badge {{statusClass .Status}}">{{statusName .Status}}</span></td>
     <td>{{bytesize .Size}}</td>
     <td class="muted">{{timefmt .UpdatedAt}}</td>

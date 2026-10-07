@@ -16,7 +16,7 @@ type Store struct {
 
 func New(db *sql.DB) *Store { return &Store{db: db} }
 
-// ErrUnique 用于识别唯一约束冲突（用户名/子域名/域名重复）。
+// ErrUnique 用于识别唯一约束冲突（用户名/访问路径/域名重复）。
 const ErrUnique = "UNIQUE constraint failed"
 
 func IsUniqueErr(err error) bool {

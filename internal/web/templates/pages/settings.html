@@ -31,10 +31,10 @@
 
   <div class="card">
     <h3>域名</h3>
-    <label>子域名后缀<input name="sites_host" value="{{.Data.S.SitesHost}}" placeholder="sites.example.com">
-      <span class="help">用户项目将获得 <code>前缀.后缀</code> 的访问地址；留空表示不启用子域名访问。需要给该后缀配置泛解析（* 后缀 → 服务器 IP）。</span></label>
+    <label>站点域名<input name="sites_host" value="{{.Data.S.SitesHost}}" placeholder="sites.example.com">
+      <span class="help">用户项目将以 <code>站点域名/访问路径/</code> 的形式访问（例如 <code>sites.example.com/demo/</code>）。只需给该域名配一条 A 记录，<b>不需要泛解析，也不需要泛域名证书</b>。留空表示不启用站点域名访问（仍可用预览与自定义域名）。注意不要与面板域名填成同一个。</span></label>
     <label>面板域名<input name="panel_host" value="{{.Data.S.PanelHost}}" placeholder="dash.example.com">
-      <span class="help">面板所在域名。留空时只有「IP / localhost」或子域名后缀顶点能进面板，其他域名会返回 404；建议填写。</span></label>
+      <span class="help">面板所在域名。留空时只有「IP / localhost」能进面板，其他域名会返回 404；建议填写，且必须与站点域名不同。</span></label>
   </div>
 
   <button class="btn primary" type="submit">保存设置</button>

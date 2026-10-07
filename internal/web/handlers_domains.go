@@ -26,11 +26,11 @@ func (w *Web) projectDomainsPage(rw http.ResponseWriter, r *http.Request) {
 		w.errorPage(rw, r, http.StatusInternalServerError, "服务器错误")
 		return
 	}
-	// 只有配置了子域名后缀才有可用的 CNAME 目标；否则给用户一个
-	// "<slug>." 这种无法解析的地址，等于把人引到死路上。
+	// CNAME 目标是站点域名本身（站点为「站点域名/项目路径」形式），
+	// 未配置站点域名时没有可用的 CNAME 目标，只能走 A 记录方式。
 	target := ""
 	if st.SitesHost != "" {
-		target = p.Slug + "." + st.SitesHost
+		target = st.SitesHost
 	}
 	w.render(rw, r, http.StatusOK, "project_domains", "自定义域名", map[string]any{
 		"Project":   p,
@@ -131,10 +131,11 @@ func (w *Web) domainCheck(rw http.ResponseWriter, r *http.Request) {
 	fetchErr := error(nil)
 	fetchStatus := 0
 
-	// 方式一：CNAME 指向 <slug>.<sites_host>（未配置子域名后缀时无此路径）
+	// 方式一：CNAME 指向站点域名本身（站点已改为「站点域名/项目路径」，
+	// 因此所有项目共用一个 CNAME 目标，不再需要泛解析）
 	if st.SitesHost != "" {
 		if canonical, err := net.LookupCNAME(d.Domain); err == nil {
-			if strings.TrimSuffix(strings.ToLower(canonical), ".") == p.Slug+"."+st.SitesHost {
+			if strings.TrimSuffix(strings.ToLower(canonical), ".") == st.SitesHost {
 				verified = true
 			}
 		}
@@ -157,7 +158,7 @@ func (w *Web) domainCheck(rw http.ResponseWriter, r *http.Request) {
 
 	if !verified {
 		// 把失败原因说清楚，否则用户只能看到一句「未检测到解析生效」，
-		// 不知道该改 DNS、该开端口，还是该先配子域名后缀。
+		// 不知道该改 DNS、该开端口，还是该先配站点域名。
 		switch {
 		case fetchErr != nil && errors.Is(fetchErr, errBlockedTarget):
 			fail("域名解析到回环 / 链路本地地址，服务端不会向内网发起验证请求；请让域名解析到服务器的公网地址，或改用 CNAME 方式。")
@@ -166,7 +167,7 @@ func (w *Web) domainCheck(rw http.ResponseWriter, r *http.Request) {
 		case fetchStatus != http.StatusOK:
 			fail("验证地址返回了 HTTP " + strconv.Itoa(fetchStatus) + "，未返回令牌内容；请确认该域名已指向本服务器。")
 		case st.SitesHost == "":
-			fail("未在该域名上读到验证令牌：请确认 A 记录已指向本服务器；如需用 CNAME 方式，请先在「系统设置 → 域名」配置子域名后缀。")
+			fail("未在该域名上读到验证令牌：请确认 A 记录已指向本服务器；如需用 CNAME 方式，请先在「系统设置 → 域名」配置站点域名。")
 		default:
 			fail("暂未检测到解析生效：请确认 CNAME/A 记录已生效后重试。")
 		}

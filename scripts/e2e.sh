@@ -99,8 +99,8 @@ code=$(curl -s -b "${JAR_ADMIN}" -c "${JAR_ADMIN}" -o /dev/null -w '%{http_code}
 body=$(curl -s -b "${JAR_ADMIN}" "${BASE}/projects/${pid}")
 check "上传后进入待审核" "待审核" "$body"
 
-# 6. 站点 Host 访问：未发布 → 403 占位页
-code=$(curl -s -o "${WORK}/host.html" -w '%{http_code}' -H "Host: demo.sites.example.com" "${BASE}/index.html")
+# 6. 站点域名 + 路径访问：未发布 → 403 占位页
+code=$(curl -s -o "${WORK}/host.html" -w '%{http_code}' -H "Host: sites.example.com" "${BASE}/demo/index.html")
 [[ "$code" == 403 ]] && pass "未发布站点返回 403 占位页" || fail "未发布站点应 403（实际 ${code}）"
 
 # 7. 预览可访问（同源带会话）
@@ -112,12 +112,18 @@ code=$(curl -s -b "${JAR_ADMIN}" -c "${JAR_ADMIN}" -o /dev/null -w '%{http_code}
   -d "_csrf=$(csrf ${JAR_ADMIN})&action=approve" "${BASE}/review/${pid}")
 [[ "$code" == 303 ]] && pass "审核通过" || fail "审核通过 (HTTP ${code})"
 
-body=$(curl -s -H "Host: demo.sites.example.com" "${BASE}/index.html")
-check "发布后站点可访问" "Hello PageHut" "$body"
-body=$(curl -s -H "Host: demo.sites.example.com" "${BASE}/assets/style.css")
+body=$(curl -s -H "Host: sites.example.com" "${BASE}/demo/index.html")
+check "发布后站点可访问（站点域名/项目路径）" "Hello PageHut" "$body"
+body=$(curl -s -H "Host: sites.example.com" "${BASE}/demo/assets/style.css")
 check "静态资源 MIME/内容正常" "color:red" "$body"
-code=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: demo.sites.example.com" "${BASE}/no-such-page.html")
+code=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: sites.example.com" "${BASE}/demo/no-such-page.html")
 [[ "$code" == 404 ]] && pass "404 正常" || fail "404 应为 404（实际 ${code}）"
+code=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: sites.example.com" "${BASE}/demo")
+[[ "$code" == 301 ]] && pass "缺尾斜杠跳转到 /demo/" || fail "/demo 应 301（实际 ${code}）"
+code=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: sites.example.com" "${BASE}/not-exist/")
+[[ "$code" == 404 ]] && pass "未知项目路径返回 404" || fail "未知路径应 404（实际 ${code}）"
+code=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: sites.example.com" "${BASE}/login")
+[[ "$code" == 404 ]] && pass "站点域名上不暴露面板（/login → 404）" || fail "站点域名上 /login 应 404（实际 ${code}）"
 
 # 9. 公开注册新用户
 curl -s -c "${JAR_USER}" -o /dev/null "${BASE}/register"
@@ -159,7 +165,7 @@ code=$(curl -s -b "${JAR_ADMIN}" -c "${JAR_ADMIN}" -o /dev/null -w '%{http_code}
 
 # 12.1 回归：域名页必须给出真实可用的 CNAME 目标（曾渲染成 "demo."）
 body=$(curl -s -b "${JAR_ADMIN}" "${BASE}/projects/${pid}/domains")
-check "域名页给出 CNAME 目标" "demo.sites.example.com" "$body"
+check "域名页给出 CNAME 目标" "<code>sites.example.com</code>" "$body"
 
 # 12.2 回归：文件管理器根目录（曾经 400 非法路径）
 code=$(curl -s -b "${JAR_ADMIN}" -o "${WORK}/files.html" -w '%{http_code}' "${BASE}/projects/${pid}/files")
@@ -181,7 +187,7 @@ check "自定义域名可访问站点" "Hello PageHut" "$body"
 
 # 13. 未托管域名
 body=$(curl -s -H "Host: nothing.here.example" "${BASE}/")
-check "未托管域名提示页" "尚未托管" "$body"
+check "未托管域名提示页" "域名未托管" "$body"
 
 # 14. CSRF 防护：不带令牌的 POST 应 403
 code=$(curl -s -b "${JAR_ADMIN}" -o /dev/null -w '%{http_code}' -d "username=x&password=y" "${BASE}/login")
@@ -205,13 +211,13 @@ check "预览响应带 CSP sandbox" "sandbox" "$hdr"
 code=$(curl -s -o /dev/null -w '%{http_code}' "${BASE}/static/")
 [[ "$code" == 404 ]] && pass "静态目录不做列表（/static/ → 404）" || fail "/static/ 应 404（实际 ${code}）"
 
-# 19. 下架不可被覆盖：子域名与自定义域名都必须停止服务
+# 19. 下架不可被覆盖：站点域名与自定义域名都必须停止服务
 code=$(curl -s -b "${JAR_ADMIN}" -o /dev/null -w '%{http_code}' \
   -d "_csrf=$(csrf ${JAR_ADMIN})&action=suspend&reason=e2e" "${BASE}/review/${pid}")
 [[ "$code" == 303 ]] && pass "管理员下架项目" || fail "下架应 303（实际 ${code}）"
 
-code=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: demo.sites.example.com" "${BASE}/index.html")
-[[ "$code" == 403 ]] && pass "下架后子域名不再服务" || fail "下架后子域名应 403（实际 ${code}）"
+code=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: sites.example.com" "${BASE}/demo/index.html")
+[[ "$code" == 403 ]] && pass "下架后站点域名路径不再服务" || fail "下架后路径访问应 403（实际 ${code}）"
 code=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: www.mydemo.cn" "${BASE}/index.html")
 [[ "$code" == 403 ]] && pass "下架后自定义域名不再服务" || fail "下架后自定义域名应 403（实际 ${code}）"
 
@@ -223,7 +229,7 @@ code=$(curl -s -b "${JAR_ADMIN}" -o /dev/null -w '%{http_code}' \
 code=$(curl -s -b "${JAR_ADMIN}" -o /dev/null -w '%{http_code}' \
   -d "_csrf=$(csrf ${JAR_ADMIN})&action=publish" "${BASE}/review/${pid}")
 [[ "$code" == 303 ]] && pass "管理员强制发布恢复" || fail "发布应 303（实际 ${code}）"
-body=$(curl -s -H "Host: demo.sites.example.com" "${BASE}/index.html")
+body=$(curl -s -H "Host: sites.example.com" "${BASE}/demo/index.html")
 check "恢复后站点可访问" "Hello PageHut" "$body"
 
 echo "══ 全部通过 ══"

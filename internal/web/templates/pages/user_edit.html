@@ -50,7 +50,7 @@
 <div class="card">
   <h3>该项目用户的项目</h3>
   <table class="list">
-    <tr><th>项目</th><th>子域名</th><th>状态</th><th>大小</th></tr>
+    <tr><th>项目</th><th>访问路径</th><th>状态</th><th>大小</th></tr>
     {{range .Data.Projects}}
     <tr><td><a href="/projects/{{.ID}}">{{.Name}}</a></td><td class="mono">{{.Slug}}</td><td><span class="badge {{statusClass .Status}}">{{statusName .Status}}</span></td><td>{{bytesize .Size}}</td></tr>
     {{end}}

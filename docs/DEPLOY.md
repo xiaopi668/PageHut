@@ -32,7 +32,7 @@ docker compose logs pagehut | grep 初始管理员
 
 ### 内置自动 HTTPS（auto 模式）
 
-前提：`面板域名`、`子域名后缀` 与各自定义域名都已把 DNS 解析（A 记录或泛解析）指到本服务器，且 80/443 未被其他程序占用。
+前提：`面板域名`、`站点域名` 与各自定义域名都已把 DNS 解析（A 记录即可，**不需要泛解析**）指到本服务器，且 80/443 未被其他程序占用。
 
 ```yaml
     ports:
@@ -41,7 +41,7 @@ docker compose logs pagehut | grep 初始管理员
     command: ["-data", "/data", "-tls", "auto", "-http", ":80", "-https", ":443", "-acme-email", "you@example.com"]
 ```
 
-auto 模式下证书按需签发：面板域名、每个站点子域名、每个已开通的自定义域名首次被访问时自动申请，缓存于 `数据目录/acme`。
+auto 模式下证书按需签发：面板域名、站点域名、每个已开通的自定义域名首次被访问时自动申请，缓存于 `数据目录/acme`。（站点为路径形式，因此不再需要泛域名证书。）
 
 ## 二、裸二进制 + systemd
 
@@ -108,11 +108,11 @@ server {
     }
 }
 
-# 站点子域名（泛解析）
+# 站点域名（用户站点按 站点域名/项目路径/ 访问，普通证书即可）
 server {
     listen 443 ssl http2;
-    server_name *.sites.example.com;
-    # ssl_certificate 泛域名证书（或使用 Caddy 按需签发）
+    server_name sites.example.com;
+    # ssl_certificate 单域名证书即可（或使用 Caddy 按需签发）
     location / {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
@@ -128,7 +128,7 @@ server {
 > 反代与 PageHut **不在同一台机器**时，用 `-trusted-proxies`（或 `PAGEHUT_TRUSTED_PROXIES`）
 > 把反代的出口地址段加进去；默认只信任回环地址，其余来源的 `X-Forwarded-For` 一律忽略。
 
-### Caddy（自动 HTTPS，含泛域名按需签发）
+### Caddy（自动 HTTPS，按需签发）
 
 ```caddy
 {
@@ -141,7 +141,7 @@ dash.example.com {
     reverse_proxy 127.0.0.1:8080
 }
 
-*.sites.example.com, www.mydemo.cn {
+sites.example.com, www.mydemo.cn {
     tls {
         on_demand
     }
@@ -150,9 +150,9 @@ dash.example.com {
 ```
 
 > ⚠️ **`ask` 端点决定谁能触发证书签发**。`/login`、`/healthz` 这类无条件返回 200 的端点
-> 等于对任意域名放行，攻击者可以用 `随机.sites.example.com` 消耗你的 ACME 配额，
+> 等于对任意域名放行，攻击者可以用随机域名消耗你的 ACME 配额，
 > 导致正常站点签不出证书。请让 `ask` 指向一个真正校验「该域名归本站管」的端点
-> （例如仅当域名在 `domains` 表中处于 `active` 或属于已存在的项目子域名时才返回 200），
+> （例如仅当域名在 `domains` 表中处于 `active`、或等于站点域名/面板域名时才返回 200），
 > 或在反代层维护显式域名白名单。上面示例用的是最简形态，仅适合域名完全自控的场景。
 
 ## 四、DNS 配置
@@ -160,23 +160,23 @@ dash.example.com {
 | 用途 | 记录 | 示例 |
 |---|---|---|
 | 面板 | A 记录 `dash` → 服务器 IP | `dash.example.com` |
-| 站点子域名 | A 记录 `*.sites` → 服务器 IP（泛解析） | `demo.sites.example.com` |
-| 自定义域名（用户操作） | CNAME `www` → `demo.sites.example.com`，或 A 记录指向服务器 IP | — |
+| 站点域名 | A 记录 `sites` → 服务器 IP（**一条普通记录，无需泛解析**） | `sites.example.com/demo/` |
+| 自定义域名（用户操作） | CNAME `www` → `sites.example.com`，或 A 记录指向服务器 IP | `www.mydemo.cn/demo/` |
 
 后台「系统设置」中：
 
-- **子域名后缀**：填 `sites.example.com`，用户项目即获得 `前缀.sites.example.com`；留空则不启用子域名访问（仍可用预览与自定义域名）
-- **面板域名**：填 `dash.example.com`（**建议填写**）。留空时只有「IP / localhost」以及子域名后缀顶点能进面板，其他域名一律返回 404 —— 按域名访问面板会打不开，请先填好这一项再配反代
+- **站点域名**：填 `sites.example.com`，用户项目即以 `sites.example.com/项目路径/` 的形式访问（例如 `sites.example.com/demo/`）；留空则不启用站点域名访问（仍可用预览与自定义域名）。**必须与面板域名不同**——用户站点里跑的是上传的任意 JS，同源会带来安全风险，后台会拒绝保存相同的值
+- **面板域名**：填 `dash.example.com`（**建议填写**）。留空时只有「IP / localhost」能进面板，其他域名一律返回 404 —— 按域名访问面板会打不开，请先填好这一项再配反代
 
 ## 五、自定义域名流程（给管理员看）
 
 1. 用户在项目「域名」页提交域名
-2. 用户完成 DNS 解析（CNAME 指向其项目的子域名地址，或 A 记录指向服务器）
+2. 用户完成 DNS 解析（CNAME 指向站点域名，或 A 记录指向服务器）
 3. 所有权验证二选一，自动完成：
-   - 用户点击「立即检查」，服务端核对 CNAME；
+   - 用户点击「立即检查」，服务端核对 CNAME（目标为站点域名本身）；
    - 或用户访问验证链接 `http://域名/.well-known/pagehut-verify/<令牌>`（域名解析到本服务器时自动通过）
 4. 域名进入「已验证待开通」，管理员在「域名管理」中开通
-5. 开通后该域名即按 Host 路由到对应项目；HTTPS 证书由所选 TLS 模式处理（auto 模式自动签发；manual 模式需你在反代上为该域名配证书，推荐让用户用 CNAME 接入泛域名）
+5. 开通后该域名下：根路径 `/` 指向绑定的项目，`/项目路径/` 可访问该用户自己的项目；站点里的绝对路径（如 `/assets/x.css`）会回退到绑定项目，因此原有站点无需改动。HTTPS 证书由所选 TLS 模式处理（auto 模式自动签发；manual 模式需你在反代上为该域名配证书）
 
 ## 六、额度体系
 

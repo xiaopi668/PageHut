@@ -18,7 +18,7 @@ var (
 	domainRe   = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)
 )
 
-// reservedSlugs 是子域名命名空间中的保留字。
+// reservedSlugs 是访问路径命名空间中的保留字（避免与面板路由、常见约定冲突）。
 var reservedSlugs = map[string]bool{
 	"www": true, "panel": true, "admin": true, "api": true, "app": true,
 	"static": true, "assets": true, "preview": true, "auth": true,

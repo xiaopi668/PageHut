@@ -6,8 +6,8 @@
   <form method="post" action="/projects/new">
     <input type="hidden" name="_csrf" value="{{.CSRF}}">
     <label>项目名称<input name="name" value="{{.Data.Name}}" required autofocus placeholder="例如：我的个人主页"></label>
-    <label>子域名前缀<input name="slug" value="{{.Data.Slug}}" placeholder="留空则根据名称自动生成">
-      <span class="help">只允许小写字母、数字和短横线；最终访问地址为 <code>前缀.子域名后缀</code>（后缀由管理员配置）</span></label>
+    <label>访问路径<input name="slug" value="{{.Data.Slug}}" placeholder="留空则根据名称自动生成">
+      <span class="help">只允许小写字母、数字和短横线；最终访问地址为 <code>站点域名/访问路径/</code>（站点域名由管理员配置）</span></label>
     <button class="btn primary" type="submit">创建</button>
     <a class="btn" href="/">取消</a>
   </form>
