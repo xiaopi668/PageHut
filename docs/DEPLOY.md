@@ -189,7 +189,51 @@ sites.example.com, www.mydemo.cn {
 
 管理员自身不受数量限制；zip 解压后与文件管理器上传均受额度约束。
 
-## 七、备份与恢复
+## 七、人机验证 / 邮件 / OIDC（可选）
+
+三项都在「系统设置」里配置，改完即时生效，不需要重启。
+
+### 人机验证
+
+| 方式 | 说明 |
+|---|---|
+| Cloudflare Turnstile | 在 Cloudflare 后台创建 widget（模式选 Managed），把 sitekey / secret 填进来。服务端会调用官方 siteverify，并校验 `success`、`action` 与 `hostname`——面板有多个域名时把其余域名填到「额外允许的 hostname」。启用后 CSP 会自动放行 `challenges.cloudflare.com` |
+| 图形验证码 | 本站自绘 PNG（5 位数字，带错切与干扰线），无需任何外部服务；答案只存在服务端，cookie 里只有随机 id |
+| 滑动拼图验证 | 本站自绘背景与拼图块；目标横坐标只存在服务端，前端提交的是用户最终拖到的位置（±8px 容差） |
+
+- 开启后：**注册、绑定邮箱、找回密码**一律需要验证；**登录页**是否验证由「登录页也要求人机验证」开关决定
+- 发送邮箱验证码前必须先通过人机验证（这是「先过人机验证，才能发送验证码」的实现方式）
+- 每次挑战 10 分钟有效、最多 5 次尝试
+
+### 邮件（SMTP）
+
+| 字段 | 说明 |
+|---|---|
+| SMTP 服务器 / 端口 | 常见：`smtp.example.com` + 587（STARTTLS）或 465（SSL/TLS） |
+| 加密方式 | STARTTLS（587，推荐）/ SSL/TLS（465）/ 不加密（仅内网；`net/smtp` 会拒绝在明文连接上发送口令，除非目标是本机） |
+| 用户名 / 密码 | 留空表示不认证；密码留空提交表示「不修改」 |
+| 发件人 | 多数服务商要求与认证账号一致 |
+
+启用「注册必须完成邮箱验证」后，注册流程是：**填邮箱 → 过人机验证 → 点「发送验证码」→ 填验证码 + 密码提交**。
+验证码 10 分钟有效、同一验证码最多试 5 次、同一邮箱 60 秒内不可重发且每小时最多 5 封。
+另外，绑定 / 换绑邮箱与「忘记密码」也走同一套验证码。
+
+### OIDC 单点登录
+
+1. 在 IdP（Keycloak / Authentik / Auth0 / Google 等）创建客户端，**回调地址填 `https://面板域名/oidc/callback`**（设置页会直接显示这个地址，复制即可）
+2. 后台填写 Issuer（如 `https://accounts.example.com`，服务端会读取 `<issuer>/.well-known/openid-configuration`）、Client ID、Client Secret、Scopes
+3. 保存并勾选「启用 OIDC 登录」，登录页即出现入口按钮
+
+账号映射规则：
+
+- 先按 `(issuer, sub)` 找已有绑定 → 直接登录
+- 否则若 IdP 声明 **邮箱已验证** 且本地已有同邮箱账号 → 自动关联（不新建）
+- 否则自动建号，用户名由 `preferred_username` / 邮箱前缀推导（冲突自动加后缀），角色取「自动建号角色」
+
+> 仅支持 RS256 签名（`none` / HS256 / ES256 一律拒绝），校验 `iss`/`aud`/`exp`/`nonce` 并使用 PKCE。
+> 不支持加密 ID Token（JWE）、refresh token 与 UserInfo；`email_verified` 缺失或为假时**不会**关联已有账号。
+
+## 八、备份与恢复
 
 PageHut 的全部状态都在数据目录中：
 
@@ -227,7 +271,7 @@ docker compose start
 恢复：停服 → 还原 `pagehut.db` 与 `sites/` → **删除旧的 `pagehut.db-wal` / `pagehut.db-shm`**
 （残留的 WAL 可能回放陈旧数据）→ 启动。
 
-## 八、升级
+## 九、升级
 
 1. 备份数据目录（见上）
 2. 替换二进制/镜像

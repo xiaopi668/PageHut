@@ -15,6 +15,15 @@ import (
 // maxPasswordLen 是 bcrypt 能接受的密码字节上限（超过会直接返回错误）。
 const maxPasswordLen = 72
 
+// bcryptHash 生成密码哈希（统一入口，便于校验长度约束）。
+func bcryptHash(password string) (string, error) {
+	h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(h), nil
+}
+
 // ---------- 登录限流（内存版） ----------
 
 // loginLimiter 同时按两个维度计数：
@@ -123,9 +132,14 @@ func (w *Web) loginPage(rw http.ResponseWriter, r *http.Request) {
 		http.Redirect(rw, r, "/", http.StatusSeeOther)
 		return
 	}
+	st := w.mustSettings()
 	w.render(rw, r, http.StatusOK, "login", "登录", map[string]any{
 		"Next":  r.URL.Query().Get("next"),
 		"Error": "",
+		// 登录页可选入口：OIDC 单点登录 / 邮箱找回密码
+		"OIDCReady":    st.OIDCReady(),
+		"OIDCLabel":    st.OIDCButtonLabel,
+		"EmailEnabled": st.EmailEnabled(),
 	})
 }
 
@@ -144,6 +158,15 @@ func (w *Web) loginSubmit(rw http.ResponseWriter, r *http.Request) {
 		w.render(rw, r, http.StatusUnauthorized, "login", "登录", map[string]any{
 			"Next": next, "Error": msg, "Username": username,
 		})
+	}
+
+	// 登录页的人机验证（可选开关）
+	st := w.mustSettings()
+	if st.CaptchaOnLogin {
+		if ok, msg := w.verifyCaptcha(r, st, "login"); !ok {
+			fail(msg)
+			return
+		}
 	}
 
 	u, err := w.st.GetUserByUsername(username)
@@ -180,7 +203,7 @@ func (w *Web) registerPage(rw http.ResponseWriter, r *http.Request) {
 		http.Redirect(rw, r, "/", http.StatusSeeOther)
 		return
 	}
-	st, err := w.st.GetSettings()
+	st, err := w.settings()
 	if err != nil {
 		w.errorPage(rw, r, http.StatusInternalServerError, "服务器错误")
 		return
@@ -192,11 +215,14 @@ func (w *Web) registerPage(rw http.ResponseWriter, r *http.Request) {
 	w.render(rw, r, http.StatusOK, "register", "注册", map[string]any{
 		"Mode":  st.RegistrationMode,
 		"Error": "",
+		// 开启邮箱验证后，注册表单多出邮箱与验证码字段
+		"EmailRequired": st.EmailVerifyRequired && st.EmailEnabled(),
+		"EmailEnabled":  st.EmailEnabled(),
 	})
 }
 
 func (w *Web) registerSubmit(rw http.ResponseWriter, r *http.Request) {
-	st, err := w.st.GetSettings()
+	st, err := w.settings()
 	if err != nil {
 		w.errorPage(rw, r, http.StatusInternalServerError, "服务器错误")
 		return
@@ -210,10 +236,15 @@ func (w *Web) registerSubmit(rw http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 	password2 := r.FormValue("password2")
 	invite := strings.TrimSpace(r.FormValue("invite"))
+	email := store.NormalizeEmail(r.FormValue("email"))
+	code := r.FormValue("code")
+	emailRequired := st.EmailVerifyRequired && st.EmailEnabled()
 
 	fail := func(msg string) {
 		w.render(rw, r, http.StatusBadRequest, "register", "注册", map[string]any{
 			"Mode": st.RegistrationMode, "Error": msg, "Username": username,
+			"Email": email, "Invite": invite,
+			"EmailRequired": emailRequired, "EmailEnabled": st.EmailEnabled(),
 		})
 	}
 
@@ -233,13 +264,45 @@ func (w *Web) registerSubmit(rw http.ResponseWriter, r *http.Request) {
 		fail("两次输入的密码不一致。")
 		return
 	}
+	if emailRequired && !validEmail(email) {
+		fail("请填写正确的邮箱地址，并先获取邮箱验证码。")
+		return
+	}
+	// 开启邮箱验证时，验证码本身就证明了「先过了人机验证 + 邮箱可达」，
+	// 因此提交环节不再要求人机验证（也避免 Turnstile 令牌被一次性消耗）。
+	if !emailRequired {
+		if ok, msg := w.verifyCaptcha(r, st, "register"); !ok {
+			fail(msg)
+			return
+		}
+	}
+	if emailRequired {
+		if taken, err := w.st.EmailTaken(email); err != nil {
+			fail("服务器错误，请稍后重试。")
+			return
+		} else if taken {
+			fail("该邮箱已被使用。")
+			return
+		}
+	}
+	// 先探一次用户名，尽量不出现「验证码已消耗但建号失败」
+	if u, err := w.st.GetUserByUsername(username); err == nil && u != nil {
+		fail("用户名已被占用。")
+		return
+	}
+	if emailRequired {
+		if ok, msg := w.verifyEmailCode(email, store.EmailPurposeRegister, code); !ok {
+			fail(msg)
+			return
+		}
+	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := bcryptHash(password)
 	if err != nil {
 		w.errorPage(rw, r, http.StatusInternalServerError, "服务器错误")
 		return
 	}
-	uid, err := w.st.CreateUser(username, string(hash), "user")
+	uid, err := w.st.CreateUser(username, hash, "user")
 	if err != nil {
 		if store.IsUniqueErr(err) {
 			fail("用户名已被占用。")
@@ -256,6 +319,11 @@ func (w *Web) registerSubmit(rw http.ResponseWriter, r *http.Request) {
 			w.st.DeleteUser(uid) // 邀请码无效，回滚注册
 			fail("邀请码无效或已被使用。")
 			return
+		}
+	}
+	if emailRequired {
+		if err := w.st.SetUserEmail(uid, email, time.Now().Unix()); err != nil {
+			log.Printf("[web] 绑定注册邮箱失败: %v", err)
 		}
 	}
 
@@ -288,9 +356,20 @@ func (w *Web) accountPage(rw http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	st := w.mustSettings()
+	email, verifiedAt, err := w.st.GetUserEmail(u.ID)
+	if err != nil {
+		log.Printf("[web] 读取用户邮箱失败: %v", err)
+	}
+	identities, _ := w.st.ListOIDCIdentities(u.ID)
 	w.render(rw, r, http.StatusOK, "account", "账号设置", map[string]any{
-		"User":  u,
-		"Error": "",
+		"User":          u,
+		"Error":         "",
+		"Email":         email,
+		"EmailVerified": verifiedAt > 0,
+		"EmailEnabled":  st.EmailEnabled(),
+		"Identities":    identities,
+		"OIDCReady":     st.OIDCReady(),
 	})
 }
 

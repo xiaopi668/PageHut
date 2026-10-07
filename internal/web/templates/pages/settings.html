@@ -37,6 +37,82 @@
       <span class="help">面板所在域名。留空时只有「IP / localhost」能进面板，其他域名会返回 404；建议填写，且必须与站点域名不同。</span></label>
   </div>
 
+  <div class="card">
+    <h3>人机验证</h3>
+    <p class="help">注册、绑定邮箱、找回密码在开启后一律需要验证；登录页是否验证由下方开关决定。</p>
+    <label>验证方式
+      <select name="captcha_provider">
+        <option value="off" {{if eq .Data.S.CaptchaProvider "off"}}selected{{end}}>关闭</option>
+        <option value="turnstile" {{if eq .Data.S.CaptchaProvider "turnstile"}}selected{{end}}>Cloudflare Turnstile（推荐，需 sitekey/secret）</option>
+        <option value="image" {{if eq .Data.S.CaptchaProvider "image"}}selected{{end}}>图形验证码（本站自绘，零依赖）</option>
+        <option value="slider" {{if eq .Data.S.CaptchaProvider "slider"}}selected{{end}}>滑动拼图验证</option>
+      </select>
+    </label>
+    <label style="display:flex;align-items:center;gap:.5rem;color:var(--text)">
+      <input type="checkbox" name="captcha_on_login" value="1" style="width:auto" {{if .Data.S.CaptchaOnLogin}}checked{{end}}>
+      登录页也要求人机验证
+    </label>
+    <div class="inline-form">
+      <label>Turnstile sitekey<input name="turnstile_site_key" value="{{.Data.S.TurnstileSiteKey}}" placeholder="0x4AAAAAAA..."></label>
+      <label>Turnstile secret<input type="password" name="turnstile_secret" value="" placeholder="{{if .Data.S.TurnstileSecret}}已配置，留空不修改{{else}}在 Cloudflare 后台获取{{end}}" autocomplete="new-password"></label>
+    </div>
+    <label>额外允许的 hostname<input name="turnstile_hostnames" value="{{.Data.S.TurnstileHostnames}}" placeholder="www.example.com,panel.example.com">
+      <span class="help">留空表示只接受当前面板 Host 上产生的令牌；面板有多个域名时在此补全（逗号分隔）。</span></label>
+  </div>
+
+  <div class="card">
+    <h3>邮件（SMTP）</h3>
+    <p class="help">配置后可用于：注册邮箱验证、账号绑定邮箱、邮箱找回密码。密码留空表示不修改。</p>
+    <div class="inline-form">
+      <label>SMTP 服务器<input name="smtp_host" value="{{.Data.S.SMTPHost}}" placeholder="smtp.example.com"></label>
+      <label>端口<input name="smtp_port" type="number" min="1" max="65535" value="{{.Data.S.SMTPPort}}"></label>
+      <label>加密方式
+        <select name="smtp_tls">
+          <option value="starttls" {{if eq .Data.S.SMTPTLS "starttls"}}selected{{end}}>STARTTLS（587，推荐）</option>
+          <option value="ssl" {{if eq .Data.S.SMTPTLS "ssl"}}selected{{end}}>SSL/TLS（465）</option>
+          <option value="none" {{if eq .Data.S.SMTPTLS "none"}}selected{{end}}>不加密（仅限内网）</option>
+        </select>
+      </label>
+    </div>
+    <div class="inline-form">
+      <label>用户名<input name="smtp_user" value="{{.Data.S.SMTPUser}}" autocomplete="off"></label>
+      <label>密码<input type="password" name="smtp_pass" value="" placeholder="{{if .Data.S.SMTPPass}}已配置，留空不修改{{else}}无认证可留空{{end}}" autocomplete="new-password"></label>
+      <label>发件人<input name="smtp_from" value="{{.Data.S.SMTPFrom}}" placeholder="noreply@example.com"></label>
+    </div>
+    <label style="display:flex;align-items:center;gap:.5rem;color:var(--text)">
+      <input type="checkbox" name="email_verify_required" value="1" style="width:auto" {{if .Data.S.EmailVerifyRequired}}checked{{end}}>
+      注册必须完成邮箱验证（需先填好 SMTP 与发件人）
+    </label>
+  </div>
+
+  <div class="card">
+    <h3>OIDC 单点登录</h3>
+    <p class="help">标准 OpenID Connect（仅 RS256）。首次登录会按邮箱关联本地账号，关联不上则自动建号（默认角色见下）。</p>
+    <label style="display:flex;align-items:center;gap:.5rem;color:var(--text)">
+      <input type="checkbox" name="oidc_enabled" value="1" style="width:auto" {{if .Data.S.OIDCEnabled}}checked{{end}}>
+      启用 OIDC 登录（登录页显示入口按钮）
+    </label>
+    <label>Issuer<input name="oidc_issuer" value="{{.Data.S.OIDCIssuer}}" placeholder="https://accounts.example.com">
+      <span class="help">IdP 的 issuer 地址，服务端会读取 <code>&lt;issuer&gt;/.well-known/openid-configuration</code>。</span></label>
+    <div class="inline-form">
+      <label>Client ID<input name="oidc_client_id" value="{{.Data.S.OIDCClientID}}"></label>
+      <label>Client Secret<input type="password" name="oidc_client_secret" value="" placeholder="{{if .Data.S.OIDCClientSecret}}已配置，留空不修改{{else}}公共客户端可留空{{end}}" autocomplete="new-password"></label>
+    </div>
+    <div class="inline-form">
+      <label>Scopes<input name="oidc_scopes" value="{{.Data.S.OIDCScopes}}" placeholder="openid email profile"></label>
+      <label>按钮文案<input name="oidc_button_label" value="{{.Data.S.OIDCButtonLabel}}" placeholder="使用 OIDC 登录"></label>
+      <label>自动建号角色
+        <select name="oidc_default_role">
+          <option value="user" {{if eq .Data.S.OIDCDefaultRole "user"}}selected{{end}}>普通用户</option>
+          <option value="reviewer" {{if eq .Data.S.OIDCDefaultRole "reviewer"}}selected{{end}}>审核员</option>
+          <option value="admin" {{if eq .Data.S.OIDCDefaultRole "admin"}}selected{{end}}>管理员</option>
+        </select>
+      </label>
+    </div>
+    <label>回调地址<input value="{{.Data.RedirectURL}}" readonly>
+      <span class="help">把该地址填到 IdP 的「允许的回调地址」里。</span></label>
+  </div>
+
   <button class="btn primary" type="submit">保存设置</button>
 </form>
 {{end}}

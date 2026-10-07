@@ -124,13 +124,26 @@ func (w *Web) securityHeaders(next http.Handler) http.Handler {
 			h.Set("Referrer-Policy", "same-origin")
 			h.Set("X-Frame-Options", "DENY")
 			h.Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
-			h.Set("Content-Security-Policy",
-				"default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "+
-					"script-src 'self'; object-src 'none'; base-uri 'self'; "+
-					"form-action 'self'; frame-ancestors 'none'")
+			h.Set("Content-Security-Policy", w.panelCSP())
 		}
 		next.ServeHTTP(rw, r)
 	})
+}
+
+// panelCSP 生成面板的 CSP。启用 Cloudflare Turnstile 时，额外放行它的
+// 脚本与验证 iframe —— 只在真的启用时放行，其余情况保持最小权限。
+func (w *Web) panelCSP() string {
+	csp := "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; " +
+		"script-src 'self'; object-src 'none'; base-uri 'self'; " +
+		"form-action 'self'; frame-ancestors 'none'"
+	st, err := w.settings()
+	if err != nil || st.CaptchaProvider != captchaTurnstile {
+		return csp
+	}
+	return "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; " +
+		"script-src 'self' " + turnstileScriptURL + "; " +
+		"frame-src " + turnstileScriptURL + "; connect-src 'self' " + turnstileScriptURL + "; " +
+		"object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 }
 
 // sessionLoader 加载会话用户，并准备 CSRF 与闪存消息。
@@ -258,7 +271,9 @@ func (w *Web) render(rw http.ResponseWriter, r *http.Request, code int, tpl, tit
 		Flash:    flashFrom(r),
 		Unread:   unreadFrom(r),
 		Settings: st,
-		Data:     data,
+		// 按页面决定是否需要人机验证（登录/注册/绑定邮箱/重置密码）
+		Captcha: w.captchaViewFor(st, captchaActionFor(tpl, st)),
+		Data:    data,
 	}
 	rw.WriteHeader(code)
 	w.tpl.render(rw, tpl, pd)

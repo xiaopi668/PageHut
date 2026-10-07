@@ -1,16 +1,37 @@
 {{define "content"}}
 <h2>账号设置</h2>
+{{with .Data.Error}}<div class="alert bad">{{.}}</div>{{end}}
 <div class="card">
   <dl class="kv">
     <dt>用户名</dt><dd>{{.Data.User.Username}}</dd>
     <dt>角色</dt><dd><span class="role-chip {{.Data.User.Role}}">{{roleName .Data.User.Role}}</span></dd>
+    <dt>邮箱</dt><dd>
+      {{if .Data.Email}}{{.Data.Email}}{{if .Data.EmailVerified}} <span class="badge ok">已验证</span>{{end}}{{else}}<span class="muted">未绑定</span>{{end}}
+    </dd>
     <dt>注册时间</dt><dd>{{timefmt .Data.User.CreatedAt}}</dd>
   </dl>
 </div>
 
+{{if .Data.EmailEnabled}}
+<div class="card">
+  <h3>绑定 / 更换邮箱</h3>
+  <form method="post" action="/account/email">
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <label>邮箱<input type="email" name="email" value="{{.Data.Email}}" required autocomplete="email"></label>
+    <label>邮箱验证码
+      <span class="captcha-row">
+        <input name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="6 位数字">
+        <button class="btn" type="submit" formaction="/account/email/send-code" formnovalidate>发送验证码</button>
+      </span>
+      <span class="help">先完成下方人机验证，再点「发送验证码」；验证码 10 分钟内有效。</span></label>
+    {{template "captcha" .}}
+    <button class="btn primary" type="submit">保存邮箱</button>
+  </form>
+</div>
+{{end}}
+
 <div class="card">
   <h3>修改密码</h3>
-  {{with .Data.Error}}<div class="alert bad">{{.}}</div>{{end}}
   <form method="post" action="/account/password">
     <input type="hidden" name="_csrf" value="{{.CSRF}}">
     <label>当前密码<input type="password" name="current" required autocomplete="current-password"></label>
@@ -20,4 +41,13 @@
     <button class="btn primary" type="submit">修改密码</button>
   </form>
 </div>
+
+{{if .Data.Identities}}
+<div class="card">
+  <h3>已关联的 OIDC 身份</h3>
+  <ul class="small muted">
+    {{range .Data.Identities}}<li><code>{{.Issuer}}</code> · {{if .Email}}{{.Email}}{{else}}（未提供邮箱）{{end}}</li>{{end}}
+  </ul>
+</div>
+{{end}}
 {{end}}

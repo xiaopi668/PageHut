@@ -1,0 +1,24 @@
+{{define "content"}}
+<h2>找回密码</h2>
+{{with .Data.Error}}<div class="alert bad">{{.}}</div>{{end}}
+{{if .Data.Enabled}}
+<form method="post" action="/forgot">
+  <input type="hidden" name="_csrf" value="{{.CSRF}}">
+  <label>注册邮箱<input type="email" name="email" value="{{.Data.Email}}" required autofocus autocomplete="email"></label>
+  <label>邮箱验证码
+    <span class="captcha-row">
+      <input name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="6 位数字">
+      <button class="btn" type="submit" formaction="/forgot/send-code" formnovalidate>发送验证码</button>
+    </span>
+    <span class="help">先完成下方人机验证，再点「发送验证码」；验证码 10 分钟内有效。</span></label>
+  {{template "captcha" .}}
+  <label>新密码<input type="password" name="password" required autocomplete="new-password">
+    <span class="help">至少 8 位；重置后所有设备都需要重新登录</span></label>
+  <label>确认新密码<input type="password" name="password2" required autocomplete="new-password"></label>
+  <button class="btn primary" type="submit" style="width:100%">重置密码</button>
+</form>
+{{else}}
+<p class="muted">管理员尚未配置邮件服务，无法自助找回密码，请联系管理员。</p>
+{{end}}
+<p class="muted small" style="margin-top:1rem"><a href="/login">返回登录</a></p>
+{{end}}

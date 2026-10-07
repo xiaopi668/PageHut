@@ -1,0 +1,25 @@
+{{define "captcha"}}
+{{with .Captcha}}
+<div class="captcha" data-provider="{{.Provider}}" data-action="{{.Action}}">
+  {{if eq .Provider "turnstile"}}
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  <div class="cf-turnstile" data-sitekey="{{.SiteKey}}" data-action="{{.Action}}"></div>
+  {{else if eq .Provider "image"}}
+  <label>人机验证
+    <span class="captcha-row">
+      <input name="captcha_code" required autocomplete="off" inputmode="numeric" placeholder="输入图中的数字">
+      <img class="captcha-img" src="/captcha/image" alt="图形验证码" title="看不清？点击刷新" data-refresh="/captcha/image">
+    </span>
+    <span class="help">看不清可以点击图片刷新。</span>
+  </label>
+  {{else if eq .Provider "slider"}}
+  <div class="slider-captcha" data-endpoint="/captcha/slider">
+    <span class="help">拖动下方滑块，把拼图块移到缺口处。</span>
+    <div class="slider-canvas"><img class="slider-bg" alt=""><img class="slider-piece" alt=""></div>
+    <div class="slider-track"><div class="slider-thumb" role="slider" aria-label="拖动完成验证" tabindex="0">→</div></div>
+    <input type="hidden" name="captcha_x" value="">
+  </div>
+  {{end}}
+</div>
+{{end}}
+{{end}}

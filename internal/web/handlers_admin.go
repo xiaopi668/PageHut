@@ -3,6 +3,7 @@ package web
 import (
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -24,6 +25,8 @@ func (w *Web) adminSettingsPage(rw http.ResponseWriter, r *http.Request) {
 	}
 	w.render(rw, r, http.StatusOK, "settings", "系统设置", map[string]any{
 		"S": st,
+		// 便于管理员直接复制到 IdP 的「允许回调地址」
+		"RedirectURL": w.oidcRedirectURL(r),
 	})
 }
 
@@ -83,6 +86,85 @@ func (w *Web) adminSettingsSubmit(rw http.ResponseWriter, r *http.Request) {
 		siteName = "PageHut"
 	}
 
+	// ---------- 人机验证 ----------
+	captchaProvider := r.FormValue("captcha_provider")
+	switch captchaProvider {
+	case captchaOff, captchaTurnstile, captchaImage, captchaSlider:
+	default:
+		captchaProvider = st.CaptchaProvider
+	}
+	captchaOnLogin := "0"
+	if r.FormValue("captcha_on_login") == "1" {
+		captchaOnLogin = "1"
+	}
+	turnstileSiteKey := strings.TrimSpace(r.FormValue("turnstile_site_key"))
+	// 密钥留空表示「不修改」，避免把已保存的密钥回显到表单里
+	turnstileSecret := keepSecret(r.FormValue("turnstile_secret"), st.TurnstileSecret)
+	turnstileHosts := strings.TrimSpace(r.FormValue("turnstile_hostnames"))
+	if captchaProvider == captchaTurnstile && (turnstileSiteKey == "" || turnstileSecret == "") {
+		w.errorPage(rw, r, http.StatusBadRequest, "选择 Cloudflare Turnstile 时必须填写 sitekey 与 secret。")
+		return
+	}
+
+	// ---------- 邮件（SMTP）----------
+	smtpHost := strings.TrimSpace(r.FormValue("smtp_host"))
+	// 端口缺省时沿用当前值；只有显式填了非法值才报错
+	smtpPort := st.SMTPPort
+	if v := strings.TrimSpace(r.FormValue("smtp_port")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 || n > 65535 {
+			w.errorPage(rw, r, http.StatusBadRequest, "SMTP 端口必须是 1-65535 之间的整数。")
+			return
+		}
+		smtpPort = n
+	}
+	smtpUser := strings.TrimSpace(r.FormValue("smtp_user"))
+	smtpPass := keepSecret(r.FormValue("smtp_pass"), st.SMTPPass)
+	smtpFrom := strings.TrimSpace(r.FormValue("smtp_from"))
+	smtpTLS := r.FormValue("smtp_tls")
+	switch smtpTLS {
+	case "starttls", "ssl", "none":
+	default:
+		smtpTLS = st.SMTPTLS
+	}
+	if smtpHost != "" && !validEmail(smtpFrom) {
+		w.errorPage(rw, r, http.StatusBadRequest, "配置了 SMTP 服务器时，发件人必须是合法邮箱地址。")
+		return
+	}
+	emailVerify := "0"
+	if r.FormValue("email_verify_required") == "1" {
+		emailVerify = "1"
+	}
+	if emailVerify == "1" && (smtpHost == "" || smtpFrom == "") {
+		w.errorPage(rw, r, http.StatusBadRequest, "开启「注册必须验证邮箱」前，请先填写 SMTP 服务器与发件人。")
+		return
+	}
+
+	// ---------- OIDC ----------
+	oidcEnabled := "0"
+	if r.FormValue("oidc_enabled") == "1" {
+		oidcEnabled = "1"
+	}
+	oidcIssuer := strings.TrimRight(strings.TrimSpace(r.FormValue("oidc_issuer")), "/")
+	oidcClientID := strings.TrimSpace(r.FormValue("oidc_client_id"))
+	oidcSecret := keepSecret(r.FormValue("oidc_client_secret"), st.OIDCClientSecret)
+	oidcScopes := strings.TrimSpace(r.FormValue("oidc_scopes"))
+	oidcLabel := strings.TrimSpace(r.FormValue("oidc_button_label"))
+	oidcRole := r.FormValue("oidc_default_role")
+	switch oidcRole {
+	case "user", "reviewer", "admin":
+	default:
+		oidcRole = st.OIDCDefaultRole
+	}
+	if oidcIssuer != "" && !validIssuerURL(oidcIssuer) {
+		w.errorPage(rw, r, http.StatusBadRequest, "OIDC Issuer 必须是 http/https 开头的完整地址（例如 https://accounts.example.com）。")
+		return
+	}
+	if oidcEnabled == "1" && (oidcIssuer == "" || oidcClientID == "") {
+		w.errorPage(rw, r, http.StatusBadRequest, "启用 OIDC 前必须填写 Issuer 与 Client ID。")
+		return
+	}
+
 	kv := map[string]string{
 		"site_name":          siteName,
 		"registration_mode":  mode,
@@ -92,6 +174,26 @@ func (w *Web) adminSettingsSubmit(rw http.ResponseWriter, r *http.Request) {
 		"free_project_size":  strconv.FormatInt(freeMB<<20, 10),
 		"sites_host":         sitesHost,
 		"panel_host":         panelHost,
+
+		"captcha_provider":      captchaProvider,
+		"captcha_on_login":      captchaOnLogin,
+		"turnstile_site_key":    turnstileSiteKey,
+		"turnstile_secret":      turnstileSecret,
+		"turnstile_hostnames":   turnstileHosts,
+		"smtp_host":             smtpHost,
+		"smtp_port":             strconv.Itoa(smtpPort),
+		"smtp_user":             smtpUser,
+		"smtp_pass":             smtpPass,
+		"smtp_from":             smtpFrom,
+		"smtp_tls":              smtpTLS,
+		"email_verify_required": emailVerify,
+		"oidc_enabled":          oidcEnabled,
+		"oidc_issuer":           oidcIssuer,
+		"oidc_client_id":        oidcClientID,
+		"oidc_client_secret":    oidcSecret,
+		"oidc_scopes":           oidcScopes,
+		"oidc_button_label":     oidcLabel,
+		"oidc_default_role":     oidcRole,
 	}
 	if err := w.st.UpdateSettings(kv); err != nil {
 		log.Printf("[web] 保存设置失败: %v", err)
@@ -102,9 +204,27 @@ func (w *Web) adminSettingsSubmit(rw http.ResponseWriter, r *http.Request) {
 	w.st.Audit(&u.ID, u.Username, "settings.update",
 		"mode="+mode+" review="+review+" maxMB="+strconv.FormatInt(maxMB, 10)+
 			" freeCount="+strconv.Itoa(freeCount)+" freeMB="+strconv.FormatInt(freeMB, 10)+
-			" sites="+sitesHost+" panel="+panelHost)
+			" sites="+sitesHost+" panel="+panelHost+
+			" captcha="+captchaProvider+" emailVerify="+emailVerify+" oidc="+oidcEnabled)
 	flash(rw, r, "设置已保存。")
 	http.Redirect(rw, r, "/admin/settings", http.StatusSeeOther)
+}
+
+// keepSecret 处理密钥类字段：表单留空表示沿用已保存的值（不回显、不误清空）。
+func keepSecret(submitted, current string) string {
+	if s := strings.TrimSpace(submitted); s != "" {
+		return s
+	}
+	return current
+}
+
+// validIssuerURL 校验 OIDC Issuer 是否是合法的 http/https 绝对地址。
+func validIssuerURL(s string) bool {
+	u, err := url.Parse(s)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return u.Scheme == "http" || u.Scheme == "https"
 }
 
 // parseHostInput 清理用户输入的域名（去协议、去端口、小写）。

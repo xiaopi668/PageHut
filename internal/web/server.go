@@ -21,7 +21,7 @@ import (
 	"pagehut/internal/store"
 )
 
-//go:embed templates/layout.html templates/pages/*.html
+//go:embed templates/layout.html templates/captcha.html templates/pages/*.html
 var tplFS embed.FS
 
 //go:embed static
@@ -307,7 +307,7 @@ type tplSets struct {
 }
 
 var templatePages = []string{
-	"login", "register", "dashboard", "project_new", "project", "files",
+	"login", "register", "forgot", "dashboard", "project_new", "project", "files",
 	"fileedit", "review_queue", "review_detail", "settings", "users",
 	"user_new", "user_edit", "invites", "project_domains", "admin_domains",
 	"audit", "notifications", "account", "error",
@@ -328,7 +328,8 @@ func loadTemplates() (*tplSets, error) {
 		"add1":                 func(i int) int { return i + 1 },
 		"sub1":                 func(i int) int { return i - 1 },
 	}
-	base, err := template.New("layout.html").Funcs(funcs).ParseFS(tplFS, "templates/layout.html")
+	base, err := template.New("layout.html").Funcs(funcs).
+		ParseFS(tplFS, "templates/layout.html", "templates/captcha.html")
 	if err != nil {
 		return nil, err
 	}
@@ -354,6 +355,7 @@ type pageData struct {
 	Flash    string
 	Unread   int64
 	Settings *store.Settings
+	Captcha  *captchaView
 	Data     any
 }
 
@@ -378,14 +380,30 @@ func (w *Web) buildPanelMux() (http.Handler, error) {
 	// 健康检查：无需认证，供容器 / K8s 探针使用。
 	mux.HandleFunc("GET /healthz", w.healthz)
 
+	// 人机验证资源（图形码图片 / 滑动码数据）
+	mux.HandleFunc("GET /captcha/image", w.handleCaptchaImage)
+	mux.HandleFunc("GET /captcha/slider", w.handleCaptchaSlider)
+
 	// 认证与账号
 	mux.HandleFunc("GET /login", w.loginPage)
 	mux.HandleFunc("POST /login", w.loginSubmit)
 	mux.HandleFunc("GET /register", w.registerPage)
 	mux.HandleFunc("POST /register", w.registerSubmit)
+	mux.HandleFunc("POST /register/send-code", w.registerSendCode)
 	mux.HandleFunc("POST /logout", w.logoutSubmit)
 	mux.HandleFunc("GET /account", w.accountPage)
 	mux.HandleFunc("POST /account/password", w.accountPasswordSubmit)
+	mux.HandleFunc("POST /account/email/send-code", w.accountEmailSendCode)
+	mux.HandleFunc("POST /account/email", w.accountEmailSubmit)
+
+	// 找回密码（邮箱验证码）
+	mux.HandleFunc("GET /forgot", w.forgotPage)
+	mux.HandleFunc("POST /forgot/send-code", w.forgotSendCode)
+	mux.HandleFunc("POST /forgot", w.forgotSubmit)
+
+	// OIDC 单点登录
+	mux.HandleFunc("GET /oidc/login", w.oidcLogin)
+	mux.HandleFunc("GET /oidc/callback", w.oidcCallback)
 
 	// 通知
 	mux.HandleFunc("GET /notifications", w.notificationsPage)

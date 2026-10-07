@@ -97,10 +97,42 @@ CREATE TABLE IF NOT EXISTS audit_log (
 	created_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS user_emails (
+	user_id     INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+	email       TEXT    NOT NULL UNIQUE,                -- 小写
+	verified_at INTEGER NOT NULL DEFAULT 0,             -- 完成邮箱验证的时间
+	created_at  INTEGER NOT NULL,
+	updated_at  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS email_codes (
+	id         INTEGER PRIMARY KEY AUTOINCREMENT,
+	email      TEXT    NOT NULL,
+	purpose    TEXT    NOT NULL,                        -- register | bind | reset
+	user_id    INTEGER,
+	code_hash  TEXT    NOT NULL,                        -- sha256(盐 + 验证码)
+	expires_at INTEGER NOT NULL,
+	attempts   INTEGER NOT NULL DEFAULT 0,
+	created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS oidc_identities (
+	id         INTEGER PRIMARY KEY AUTOINCREMENT,
+	issuer     TEXT    NOT NULL,
+	subject    TEXT    NOT NULL,
+	user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	email      TEXT    NOT NULL DEFAULT '',
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL,
+	UNIQUE(issuer, subject)
+);
+
 CREATE INDEX IF NOT EXISTS idx_projects_owner ON projects(owner_id);
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read);
+CREATE INDEX IF NOT EXISTS idx_email_codes_lookup ON email_codes(email, purpose);
+CREATE INDEX IF NOT EXISTS idx_oidc_identities_user ON oidc_identities(user_id);
 `
 
 // Open 打开（必要时创建）数据库并初始化表结构。

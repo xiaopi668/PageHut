@@ -1,17 +1,31 @@
 {{define "content"}}
 <h2>注册</h2>
 {{with .Data.Error}}<div class="alert bad">{{.}}</div>{{end}}
+{{with .Data.Notice}}<div class="alert ok">{{.}}</div>{{end}}
 <form method="post" action="/register">
   <input type="hidden" name="_csrf" value="{{.CSRF}}">
   <label>用户名<input name="username" value="{{.Data.Username}}" required autofocus autocomplete="username">
     <span class="help">2-32 位字母、数字、下划线或短横线</span></label>
   {{if eq .Data.Mode "invite"}}
-  <label>邀请码<input name="invite" required placeholder="请输入管理员发放的邀请码"></label>
+  <label>邀请码<input name="invite" value="{{.Data.Invite}}" required placeholder="请输入管理员发放的邀请码"></label>
+  {{end}}
+  {{if .Data.EmailRequired}}
+  <label>邮箱<input type="email" name="email" value="{{.Data.Email}}" required autocomplete="email">
+    <span class="help">用于接收验证码；注册后可在「账号设置」中更换</span></label>
+  <label>邮箱验证码
+    <span class="captcha-row">
+      <input name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="6 位数字">
+      <button class="btn" type="submit" formaction="/register/send-code" formnovalidate>发送验证码</button>
+    </span>
+    <span class="help">先完成下方人机验证，再点「发送验证码」；验证码 10 分钟内有效。发送后请补全密码再提交注册。</span></label>
   {{end}}
   <label>密码<input type="password" name="password" required autocomplete="new-password">
     <span class="help">至少 8 位</span></label>
   <label>确认密码<input type="password" name="password2" required autocomplete="new-password"></label>
+  {{template "captcha" .}}
   <button class="btn primary" type="submit" style="width:100%">注册</button>
 </form>
-<p class="muted small" style="margin-top:1rem">已有账号？<a href="/login">直接登录</a></p>
+<p class="muted small" style="margin-top:1rem">
+  已有账号？<a href="/login">直接登录</a>{{if .Data.EmailEnabled}} · <a href="/forgot">忘记密码</a>{{end}}
+</p>
 {{end}}
