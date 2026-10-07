@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -88,17 +89,20 @@ func remoteHost(remoteAddr string) string {
 
 // ---------- CSRF 令牌 ----------
 
-// csrfTokenFor 为已登录会话派生稳定的 CSRF 令牌：令牌与会话绑定，
-// 于是「往父域投放一个自己知道的 pp_csrf」不再能绕过校验——服务端只认
-// 由当前会话派生出来的值，不采信 cookie 里写了什么。
-// 匿名请求（登录/注册页）没有会话可绑定，沿用随机值 + 双提交。
-func (w *Web) csrfTokenFor(sessionToken string) string {
-	if sessionToken == "" {
+// csrfTokenFor 为已登录用户派生稳定的 CSRF 令牌：服务端只认这个派生值，
+// 不采信 cookie 里写了什么，于是「往父域投放一个自己知道的 pp_csrf」不再
+// 能绕过校验。
+//
+// 令牌绑定「用户 + 持久化密钥」而不是单次会话：进程重启（重新部署）或
+// 重新登录后，之前打开的页面里的令牌依然有效，不会出现「点退出没反应」。
+// 匿名请求（登录/注册页）没有用户可绑定，沿用随机值 + 双提交。
+func (w *Web) csrfTokenFor(userID int64) string {
+	if userID <= 0 {
 		return ""
 	}
 	mac := hmac.New(sha256.New, w.csrfKey)
 	mac.Write([]byte("pagehut-csrf\x00"))
-	mac.Write([]byte(sessionToken))
+	mac.Write([]byte(strconv.FormatInt(userID, 10)))
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
@@ -133,25 +137,23 @@ func (w *Web) securityHeaders(next http.Handler) http.Handler {
 func (w *Web) sessionLoader(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		var user *store.User
-		sessionToken := ""
 		if c, err := r.Cookie(cookieSession); err == nil && c.Value != "" {
 			u, err := w.st.GetUserBySession(c.Value)
 			if err != nil {
 				log.Printf("[web] 查询会话失败: %v", err)
 			} else if u != nil && u.Status == "active" {
 				user = u
-				sessionToken = c.Value
 			}
 		}
 
-		// CSRF：已登录用户使用「会话派生值」，并把 cookie 同步成同一个值；
+		// CSRF：已登录用户使用「用户派生值」，并把 cookie 同步成同一个值；
 		// 匿名用户沿用随机值双提交。
 		csrf := ""
 		if c, err := r.Cookie(cookieCSRF); err == nil {
 			csrf = c.Value
 		}
 		if user != nil {
-			if want := w.csrfTokenFor(sessionToken); want != csrf {
+			if want := w.csrfTokenFor(user.ID); want != csrf {
 				csrf = want
 				setCookie(rw, cookieCSRF, csrf, int(30*24*time.Hour/time.Second), true, isSecureRequest(r))
 			}

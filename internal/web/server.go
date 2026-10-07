@@ -35,7 +35,7 @@ type Web struct {
 	tpl   *tplSets
 	panel http.Handler
 
-	csrfKey []byte // CSRF 令牌派生密钥（进程级随机）
+	csrfKey []byte // CSRF 令牌派生密钥（持久化在数据目录，重启后保持不变）
 
 	// settingsCache 缓存运行期设置。Host 调度与每个页面渲染都要读设置，
 	// 若每个请求都查一次库，静态站点热路径会被单条 SQL 串行化。
@@ -48,7 +48,7 @@ func Build(cfg *config.Config, db *sql.DB, st *store.Store, disk *storage.Storag
 	if err != nil {
 		return nil, err
 	}
-	w := &Web{cfg: cfg, st: st, disk: disk, tpl: sets, csrfKey: randBytes(32)}
+	w := &Web{cfg: cfg, st: st, disk: disk, tpl: sets, csrfKey: loadCSRFKey(cfg.DataDir)}
 	if _, err := w.reloadSettings(); err != nil {
 		return nil, err
 	}

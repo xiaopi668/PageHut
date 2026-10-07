@@ -34,7 +34,12 @@ type testEnv struct {
 
 func newTestEnv(t *testing.T) *testEnv {
 	t.Helper()
-	dir := t.TempDir()
+	return newTestEnvAt(t, t.TempDir())
+}
+
+// newTestEnvAt 用指定数据目录搭建实例（同一个目录重复调用 = 模拟进程重启）。
+func newTestEnvAt(t *testing.T, dir string) *testEnv {
+	t.Helper()
 	d, err := db.Open(dir)
 	if err != nil {
 		t.Fatalf("打开数据库失败: %v", err)
@@ -540,5 +545,47 @@ func TestReviewerCannotSelfApprove(t *testing.T) {
 	after, _ := env.st.GetProject(p.ID)
 	if after != nil && after.Status == store.StatusPublished {
 		t.Error("项目不应被自己审核通过")
+	}
+}
+
+// ---------- 回归：重启后旧页面仍能提交（含「退出」按钮） ----------
+
+// TestCSRFTokenSurvivesRestart 覆盖一个真实事故：重新部署（进程重启）后，
+// 重启前打开的页面里所有 POST 都会 403，表现为「点了退出没反应」。
+// 令牌必须由持久化密钥派生，重启后保持不变。
+func TestCSRFTokenSurvivesRestart(t *testing.T) {
+	dir := t.TempDir()
+
+	// 实例 A：登录，取出页面里的令牌
+	envA := newTestEnvAt(t, dir)
+	envA.addUser("admin", "admin-pass-123", "admin")
+	clA := newClient(t)
+	envA.loginOK(clA, "admin", "admin-pass-123")
+	envA.get(clA, "/").Body.Close()
+	oldToken := envA.cookie(clA, cookieCSRF)
+	session := envA.cookie(clA, cookieSession)
+	if oldToken == "" || session == "" {
+		t.Fatal("缺少 CSRF 或会话 cookie")
+	}
+	envA.srv.Close() // 模拟进程退出
+
+	// 实例 B：同一数据目录重启（会话仍在数据库里，用户看起来还登录着）
+	envB := newTestEnvAt(t, dir)
+	clB := newClient(t)
+	u, _ := url.Parse(envB.srv.URL)
+	clB.Jar.SetCookies(u, []*http.Cookie{{Name: cookieSession, Value: session}})
+
+	resp := envB.get(clB, "/")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("重启后会话应仍有效（200），实际 %d", resp.StatusCode)
+	}
+
+	// 关键断言：重启前页面里的令牌仍被接受 → 退出成功
+	// 注意请求里故意不带 pp_csrf cookie，令牌由服务端按用户派生。
+	out := envB.post(clB, "/logout", url.Values{"_csrf": {oldToken}})
+	defer out.Body.Close()
+	if out.StatusCode != http.StatusSeeOther {
+		t.Fatalf("重启后使用旧页面令牌退出应 303，实际 %d（即「无法退出登录」）", out.StatusCode)
 	}
 }
